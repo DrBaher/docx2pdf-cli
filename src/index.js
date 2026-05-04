@@ -200,10 +200,20 @@ function toAppleScriptString(value) { return `"${String(value).replace(/\\/g, "\
 function convertWithLibreOffice(input, output, runner, timeoutMs) {
   const bin = commandExists("soffice", runner) ? "soffice" : "lowriter";
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-lo-"));
+  const profileDir = path.join(tempDir, "profile");
+  const outDir = path.join(tempDir, "out");
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.mkdirSync(outDir, { recursive: true });
   try {
-    const r = runner(bin, ["--headless", "--convert-to", "pdf", "--outdir", tempDir, input], { timeoutMs });
+    const r = runner(bin, [
+      `-env:UserInstallation=file://${profileDir}`,
+      "--headless",
+      "--convert-to", "pdf",
+      "--outdir", outDir,
+      input
+    ], { timeoutMs });
     if (r.status !== 0) throw new CliError(`LibreOffice conversion failed: ${String(r.stderr || "").trim()}`, EXIT.CONVERT_FAIL);
-    const generated = path.join(tempDir, `${path.basename(input, path.extname(input))}.pdf`);
+    const generated = path.join(outDir, `${path.basename(input, path.extname(input))}.pdf`);
     if (!fs.existsSync(generated)) throw new CliError(`LibreOffice did not generate: ${generated}`, EXIT.CONVERT_FAIL);
     try {
       fs.renameSync(generated, output);

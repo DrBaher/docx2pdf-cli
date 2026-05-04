@@ -203,6 +203,43 @@ test("convertWithLibreOffice writes into tmpdir then moves into place", () => {
   }
 });
 
+test("convertWithLibreOffice passes a per-call -env:UserInstallation profile dir", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    fs.writeFileSync(input, "placeholder");
+
+    const profilesSeen = [];
+    const runConvert = (output) => {
+      const runner = (command, args) => {
+        if (command === "sh" && args[1].includes("soffice")) {
+          return { status: 0, stdout: "/usr/bin/soffice\n", stderr: "" };
+        }
+        if (command === "soffice") {
+          const envArg = args.find(a => a.startsWith("-env:UserInstallation="));
+          assert.ok(envArg, "soffice must receive -env:UserInstallation=...");
+          assert.match(envArg, /^-env:UserInstallation=file:\/\//);
+          profilesSeen.push(envArg);
+          const idx = args.indexOf("--outdir");
+          const generated = path.join(args[idx + 1], "sample.pdf");
+          fs.writeFileSync(generated, "%PDF-1.4\nfake\n");
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        throw new Error(`Unexpected call: ${command} ${args.join(" ")}`);
+      };
+      convertWithLibreOffice(input, output, runner, 1000);
+    };
+
+    runConvert(path.join(tempDir, "out1.pdf"));
+    runConvert(path.join(tempDir, "out2.pdf"));
+
+    assert.equal(profilesSeen.length, 2);
+    assert.notEqual(profilesSeen[0], profilesSeen[1], "each call must use a fresh profile dir");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("convertWithLibreOffice surfaces stderr on failure", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
   try {
