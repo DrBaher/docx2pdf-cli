@@ -1,0 +1,74 @@
+name: Bug report
+description: A conversion failed, the wrong backend was picked, output looks wrong, or something else broke.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Before opening, please run `docx2pdf --doctor`
+        and `docx2pdf --why <your-input.docx>` and paste the output below — they capture most of
+        what's needed to triage backend / environment issues.
+
+  - type: input
+    id: version
+    attributes:
+      label: docx2pdf-cli version
+      description: Output of `docx2pdf --version`
+      placeholder: "0.1.1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: "macOS 14.5 / Ubuntu 22.04 / Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`
+      placeholder: "v20.11.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: docx2pdf --doctor output
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command you ran
+      render: shell
+      placeholder: "docx2pdf --backend libreoffice input.docx output.pdf"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Paste error messages, exit codes, or describe the wrong output. If --json was used, include the JSON line.
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimal
+    attributes:
+      label: Minimal reproducer (optional)
+      description: If the bug is content-specific, attach a minimal .docx that reproduces it. Avoid attaching documents containing sensitive content.

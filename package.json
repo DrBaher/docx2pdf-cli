@@ -1,6 +1,6 @@
 {
   "name": "docx2pdf-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Honest, batch-aware DOCX to PDF CLI with hybrid backends (LibreOffice, Gotenberg, ConvertAPI, Pages, Word, textutil).",
   "type": "commonjs",
   "bin": {

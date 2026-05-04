@@ -1,5 +1,10 @@
 # docx2pdf-cli
 
+[![npm version](https://img.shields.io/npm/v/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
+[![npm downloads](https://img.shields.io/npm/dw/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
+[![CI](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Honest, batch-aware DOCX → PDF converter with hybrid backends.
 
 - **Tells you which backend ran and why** — `--why` prints the full decision tree; no opaque "auto" mode that silently picks a low-fidelity fallback.
@@ -7,6 +12,20 @@ Honest, batch-aware DOCX → PDF converter with hybrid backends.
 - **Batch mode with NDJSON** — convert globs of inputs into an output directory, with one structured line per file for CI piping.
 - **Font preflight** — warns when fonts in the document aren't installed before LibreOffice/Gotenberg substitute them silently.
 - **Six pluggable backends**, with strict-fidelity guard against the text-only fallback.
+
+## How it compares
+
+|                                 | docx2pdf-cli       | [libreoffice-convert](https://www.npmjs.com/package/libreoffice-convert) | [AlJohri/docx2pdf](https://github.com/AlJohri/docx2pdf) | [Gotenberg](https://gotenberg.dev) | [dxpdf](https://lib.rs/crates/dxpdf) |
+|---------------------------------|--------------------|--------------------------------------------------------------------------|--------------------------------------------------------|------------------------------------|--------------------------------------|
+| Backend approach                | hybrid (6)         | LibreOffice                                                              | MS Word automation                                     | LibreOffice (server)               | native Skia renderer                 |
+| Concurrency-safe LO             | ✅ per-call profile | ❌ shared profile collision                                              | n/a                                                    | ✅                                  | n/a                                  |
+| Batch CLI + NDJSON              | ✅                  | ❌ (library API only)                                                    | ❌                                                      | n/a (HTTP server)                  | ❌                                    |
+| Backend transparency (`--why`)  | ✅                  | ❌                                                                        | ❌                                                      | ❌                                  | ❌                                    |
+| Font preflight                  | ✅                  | ❌                                                                        | ❌                                                      | ❌                                  | ❌                                    |
+| Linux + macOS + Windows         | ✅                  | ✅                                                                        | macOS + Windows only                                   | ✅ (Docker)                         | ✅                                    |
+| Install                         | `npm i -g`         | `npm i`                                                                  | `pip install`                                          | Docker                             | `cargo install` / `pip`              |
+
+Honest notes: `libreoffice-convert` is a leaner Node *library API* (we're a CLI). Gotenberg also handles HTML→PDF and scales as a server. `dxpdf` ships a custom renderer that avoids LibreOffice entirely (~100ms per doc) but is still feature-incomplete.
 
 ## Install
 

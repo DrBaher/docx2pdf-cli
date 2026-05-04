@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a new flag, backend, output format, or behavior.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the workflow or use case that is currently awkward, impossible, or surprising.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the flag, behavior, or API. Concrete is better than abstract.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else could solve this? Why not those?
+
+  - type: textarea
+    id: comparable
+    attributes:
+      label: Prior art
+      description: Does another tool do this? Link to the docs or implementation if so.
