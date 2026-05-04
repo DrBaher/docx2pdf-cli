@@ -12,11 +12,21 @@ const PKG = require("../package.json");
 const { EXIT } = require("../src/index");
 
 function runCli(args, options = {}) {
+  const env = options.envReplace
+    ? options.envReplace
+    : { ...process.env, ...(options.env || {}) };
   return spawnSync(process.execPath, [CLI, ...args], {
     encoding: "utf8",
-    env: { ...process.env, ...(options.env || {}) },
+    env,
     cwd: options.cwd
   });
+}
+
+function envWithoutBackends() {
+  const env = { ...process.env };
+  delete env.GOTENBERG_URL;
+  delete env.CONVERTAPI_SECRET;
+  return env;
 }
 
 test("--help prints usage and exits 0", () => {
@@ -251,6 +261,50 @@ test("parallel batch with --concurrency emits one NDJSON line per input in input
       assert.ok(p.error);
     }
     assert.notEqual(r.status, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("internal glob expansion: --out-dir + literal *.docx pattern matches files", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const names = ["one.docx", "two.docx", "three.docx"];
+    for (const n of names) fs.writeFileSync(path.join(tempDir, n), "");
+    // Pass the literal glob pattern as a single argv element so the test shell
+    // doesn't pre-expand it. CLI must expand internally.
+    // Force --backend gotenberg with GOTENBERG_URL unset → fast EXIT.MISSING_DEP
+    // per file. We only care that 3 inputs reached the conversion path.
+    const pattern = path.join(tempDir, "*.docx");
+    const r = runCli(
+      ["--json", "--backend", "gotenberg", "--out-dir", outDir, pattern],
+      { envReplace: envWithoutBackends() }
+    );
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 3, `expected 3 NDJSON lines from glob, got: ${r.stdout}`);
+    const inputs = lines.map((l) => JSON.parse(l).input);
+    assert.deepEqual(inputs.sort(), names.map((n) => path.join(tempDir, n)).sort());
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("internal glob expansion preserves literal pattern when no match", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const pattern = path.join(tempDir, "no-match-*.docx");
+    const r = runCli(
+      ["--json", "--backend", "gotenberg", "--out-dir", outDir, pattern],
+      { envReplace: envWithoutBackends() }
+    );
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const obj = JSON.parse(lines[0]);
+    assert.equal(obj.ok, false);
+    assert.equal(obj.input, pattern);
+    assert.match(obj.error, /Input file not found/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

@@ -382,6 +382,35 @@ function convertWithTextutilCups(input, output, runner = runCommand, timeoutMs =
   } finally { fs.rmSync(tempDir, { recursive: true, force: true }); }
 }
 
+function expandIfGlob(pattern) {
+  if (fs.existsSync(pattern)) return [pattern];
+  if (!/[*?[]/.test(pattern)) return [pattern];
+  const dir = path.dirname(pattern) || ".";
+  const base = path.basename(pattern);
+  const regex = new RegExp(
+    "^" + base.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$"
+  );
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [pattern];
+  }
+  const matches = entries
+    .filter((f) => regex.test(f))
+    .map((f) => path.join(dir, f))
+    .sort();
+  return matches.length ? matches : [pattern];
+}
+
+function expandInputs(inputs) {
+  const out = [];
+  for (const p of inputs) {
+    for (const expanded of expandIfGlob(p)) out.push(expanded);
+  }
+  return out;
+}
+
 function listDocxFonts(input, runner = runCommand) {
   if (!commandExists("unzip", runner)) return null;
   const r = runner("unzip", ["-p", input, "word/fontTable.xml"], { timeoutMs: 5000 });
@@ -456,4 +485,4 @@ Options:
 `;
 }
 
-module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts };
+module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts, expandIfGlob, expandInputs };

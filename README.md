@@ -44,7 +44,10 @@ docx2pdf --backend convertapi input.docx output.pdf
 ```bash
 docx2pdf --out-dir ./pdfs *.docx
 docx2pdf --json --out-dir ./pdfs *.docx | jq
+docx2pdf --concurrency 4 --out-dir ./pdfs *.docx     # parallel, safe with LibreOffice
 ```
+
+Globs are expanded by your shell on macOS/Linux. On Windows or with quoted patterns (`"*.docx"`), the CLI expands `*` and `?` against the directory itself.
 
 In batch mode, one bad file does not stop the rest. With `--json`, each file emits one NDJSON line:
 
@@ -77,6 +80,7 @@ docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
 --strict-fidelity         in auto mode, refuse to fall back to text-only backend
 --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
+--concurrency <n>         run up to N conversions in parallel in batch mode (default: 1)
 --timeout-seconds <n>     conversion timeout (default: 120)
 --overwrite, --force      replace existing output file
 --quiet, -q               suppress success output (errors still print)

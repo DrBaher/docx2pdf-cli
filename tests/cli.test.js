@@ -15,6 +15,8 @@ const {
   convertWithGotenberg,
   convertWithConvertApi,
   EXIT,
+  expandIfGlob,
+  expandInputs,
   getAvailableBackends,
   getBackendReasons,
   listDocxFonts,
@@ -645,6 +647,90 @@ test("parseArgs --check-fonts populates input and inputs", () => {
   assert.equal(o.checkFonts, true);
   assert.equal(o.input, "doc.docx");
   assert.deepEqual(o.inputs, ["doc.docx"]);
+});
+
+test("expandIfGlob returns literal when path exists", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const file = path.join(tempDir, "exists.docx");
+    fs.writeFileSync(file, "");
+    assert.deepEqual(expandIfGlob(file), [file]);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("expandIfGlob returns literal when no glob characters", () => {
+  assert.deepEqual(expandIfGlob("/nope/does/not/exist.docx"), ["/nope/does/not/exist.docx"]);
+});
+
+test("expandIfGlob expands * to matching files in directory, sorted", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    fs.writeFileSync(path.join(tempDir, "c.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "a.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "b.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "ignored.txt"), "");
+    const matches = expandIfGlob(path.join(tempDir, "*.docx"));
+    assert.deepEqual(matches, [
+      path.join(tempDir, "a.docx"),
+      path.join(tempDir, "b.docx"),
+      path.join(tempDir, "c.docx")
+    ]);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("expandIfGlob expands ? as single-char wildcard", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    fs.writeFileSync(path.join(tempDir, "ab.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "ac.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "abc.docx"), "");
+    const matches = expandIfGlob(path.join(tempDir, "a?.docx"));
+    assert.deepEqual(matches, [
+      path.join(tempDir, "ab.docx"),
+      path.join(tempDir, "ac.docx")
+    ]);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("expandIfGlob preserves the literal pattern when no matches", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const pattern = path.join(tempDir, "*.docx");
+    assert.deepEqual(expandIfGlob(pattern), [pattern]);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("expandIfGlob preserves the literal pattern when directory does not exist", () => {
+  const pattern = "/nope/does/not/*.docx";
+  assert.deepEqual(expandIfGlob(pattern), [pattern]);
+});
+
+test("expandInputs preserves order across multiple positional args", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    fs.writeFileSync(path.join(tempDir, "a.docx"), "");
+    fs.writeFileSync(path.join(tempDir, "b.docx"), "");
+    const literal = path.join(tempDir, "z-literal.docx");
+    fs.writeFileSync(literal, "");
+    const result = expandInputs([
+      path.join(tempDir, "*.docx"),
+      literal
+    ]);
+    assert.equal(result[0], path.join(tempDir, "a.docx"));
+    assert.equal(result[1], path.join(tempDir, "b.docx"));
+    assert.equal(result[2], literal);
+    assert.equal(result[3], literal);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("parseArgs accepts --concurrency=N and --concurrency N", () => {

@@ -10,6 +10,7 @@ const {
   EXIT,
   checkFonts,
   convertDocxToPdf,
+  expandInputs,
   parseArgs,
   usageText,
   getAvailableBackends,
@@ -182,7 +183,7 @@ function main(argv) {
   }
   const willUseLOEngine = plannedBackend === "libreoffice" || plannedBackend === "gotenberg";
 
-  const inputs = options.inputs;
+  const inputs = options.outDir ? expandInputs(options.inputs) : options.inputs;
   const isBatch = inputs.length > 1 || options.outDir != null;
   const outDirAbs = options.outDir ? path.resolve(options.outDir) : null;
 
