@@ -464,6 +464,46 @@ test("selectBackend with strict still honors explicit non-auto request", () => {
   );
 });
 
+test("getBackendDiagnostics memoizes commandExists/appScriptable probes within one call", () => {
+  const probeCounts = {};
+  const runner = (command, args) => {
+    if (command === "sh") {
+      const m = args[1].match(/command -v '([^']+)'/);
+      const probed = m ? m[1] : "?";
+      probeCounts[`cmd:${probed}`] = (probeCounts[`cmd:${probed}`] || 0) + 1;
+      return { status: 0, stdout: "/usr/bin/" + probed + "\n", stderr: "" };
+    }
+    if (command === "osascript") {
+      const m = args[1].match(/id of application "([^"]+)"/);
+      const probed = m ? m[1] : "?";
+      probeCounts[`app:${probed}`] = (probeCounts[`app:${probed}`] || 0) + 1;
+      return { status: 1, stdout: "", stderr: "missing app" };
+    }
+    throw new Error(`Unexpected: ${command}`);
+  };
+
+  const previous = {
+    go: process.env.GOTENBERG_URL,
+    ca: process.env.CONVERTAPI_SECRET
+  };
+  process.env.GOTENBERG_URL = "http://test.local:3000";
+  process.env.CONVERTAPI_SECRET = "x";
+  try {
+    const { getBackendDiagnostics } = require("../src/index");
+    getBackendDiagnostics(runner);
+    // Each unique probe should be counted exactly once even though
+    // the high-level call uses each repeatedly.
+    for (const [probe, count] of Object.entries(probeCounts)) {
+      assert.equal(count, 1, `probe ${probe} ran ${count} times — should have been cached at 1`);
+    }
+  } finally {
+    if (previous.go === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous.go;
+    if (previous.ca === undefined) delete process.env.CONVERTAPI_SECRET;
+    else process.env.CONVERTAPI_SECRET = previous.ca;
+  }
+});
+
 test("getBackendReasons returns a reason string for every known backend", () => {
   const runner = (command, args) => {
     if (command === "sh" && args[1].includes("osascript")) return { status: 0, stdout: "/usr/bin/osascript\n", stderr: "" };

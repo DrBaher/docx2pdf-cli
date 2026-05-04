@@ -44,76 +44,90 @@ function runCommand(command, args, options = {}) {
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-function commandExists(command, runner = runCommand) {
+function commandExists(command, runner = runCommand, cache = null) {
+  const key = `cmd:${command}`;
+  if (cache && cache.has(key)) return cache.get(key);
+  let result;
   try {
-    return runner("sh", ["-lc", `command -v ${shellQuote(command)}`]).status === 0;
+    result = runner("sh", ["-lc", `command -v ${shellQuote(command)}`]).status === 0;
   } catch {
-    return false;
+    result = false;
   }
+  if (cache) cache.set(key, result);
+  return result;
 }
 
-function appScriptable(appName, runner = runCommand) {
-  if (!commandExists("osascript", runner)) return false;
-  try {
-    return runner("osascript", ["-e", `id of application \"${appName}\"`]).status === 0;
-  } catch {
-    return false;
+function appScriptable(appName, runner = runCommand, cache = null) {
+  const key = `app:${appName}`;
+  if (cache && cache.has(key)) return cache.get(key);
+  let result = false;
+  if (commandExists("osascript", runner, cache)) {
+    try {
+      result = runner("osascript", ["-e", `id of application \"${appName}\"`]).status === 0;
+    } catch {
+      result = false;
+    }
   }
+  if (cache) cache.set(key, result);
+  return result;
 }
 
-function getAvailableBackends(runner = runCommand) {
+function getAvailableBackends(runner = runCommand, cache = null) {
+  const c = cache || new Map();
   const out = [];
-  if (commandExists("soffice", runner) || commandExists("lowriter", runner)) out.push("libreoffice");
-  if (process.env.GOTENBERG_URL && commandExists("curl", runner)) out.push("gotenberg");
-  if (process.env.CONVERTAPI_SECRET && commandExists("curl", runner)) out.push("convertapi");
-  if (appScriptable("Pages", runner)) out.push("pages");
-  if (appScriptable("Microsoft Word", runner)) out.push("word");
-  if (commandExists("textutil", runner) && commandExists("cupsfilter", runner)) out.push("textutil-cups");
+  if (commandExists("soffice", runner, c) || commandExists("lowriter", runner, c)) out.push("libreoffice");
+  if (process.env.GOTENBERG_URL && commandExists("curl", runner, c)) out.push("gotenberg");
+  if (process.env.CONVERTAPI_SECRET && commandExists("curl", runner, c)) out.push("convertapi");
+  if (appScriptable("Pages", runner, c)) out.push("pages");
+  if (appScriptable("Microsoft Word", runner, c)) out.push("word");
+  if (commandExists("textutil", runner, c) && commandExists("cupsfilter", runner, c)) out.push("textutil-cups");
   return out;
 }
 
 function getBackendDiagnostics(runner = runCommand) {
+  const c = new Map();
   return {
     gotenbergUrl: process.env.GOTENBERG_URL || null,
     convertapiSecret: Boolean(process.env.CONVERTAPI_SECRET),
-    curl: commandExists("curl", runner),
-    soffice: commandExists("soffice", runner),
-    lowriter: commandExists("lowriter", runner),
-    osascript: commandExists("osascript", runner),
-    pages: appScriptable("Pages", runner),
-    word: appScriptable("Microsoft Word", runner),
-    textutil: commandExists("textutil", runner),
-    cupsfilter: commandExists("cupsfilter", runner),
-    availableBackends: getAvailableBackends(runner)
+    curl: commandExists("curl", runner, c),
+    soffice: commandExists("soffice", runner, c),
+    lowriter: commandExists("lowriter", runner, c),
+    osascript: commandExists("osascript", runner, c),
+    pages: appScriptable("Pages", runner, c),
+    word: appScriptable("Microsoft Word", runner, c),
+    textutil: commandExists("textutil", runner, c),
+    cupsfilter: commandExists("cupsfilter", runner, c),
+    availableBackends: getAvailableBackends(runner, c)
   };
 }
 
 function getBackendReasons(runner = runCommand) {
+  const c = new Map();
   const reasons = {};
-  reasons.libreoffice = (commandExists("soffice", runner) || commandExists("lowriter", runner))
+  reasons.libreoffice = (commandExists("soffice", runner, c) || commandExists("lowriter", runner, c))
     ? "available — high fidelity, local"
     : "skipped — install LibreOffice (provides soffice or lowriter)";
   if (process.env.GOTENBERG_URL) {
-    reasons.gotenberg = commandExists("curl", runner)
+    reasons.gotenberg = commandExists("curl", runner, c)
       ? `available — high fidelity, server: ${process.env.GOTENBERG_URL}`
       : "skipped — GOTENBERG_URL set but curl not found";
   } else {
     reasons.gotenberg = "skipped — set GOTENBERG_URL to enable";
   }
   if (process.env.CONVERTAPI_SECRET) {
-    reasons.convertapi = commandExists("curl", runner)
+    reasons.convertapi = commandExists("curl", runner, c)
       ? "available — high fidelity, cloud"
       : "skipped — CONVERTAPI_SECRET set but curl not found";
   } else {
     reasons.convertapi = "skipped — set CONVERTAPI_SECRET to enable";
   }
-  reasons.pages = appScriptable("Pages", runner)
+  reasons.pages = appScriptable("Pages", runner, c)
     ? "available — high fidelity, macOS"
     : "skipped — Apple Pages not installed or not scriptable";
-  reasons.word = appScriptable("Microsoft Word", runner)
+  reasons.word = appScriptable("Microsoft Word", runner, c)
     ? "available — high fidelity, macOS"
     : "skipped — Microsoft Word not installed or not scriptable";
-  if (commandExists("textutil", runner) && commandExists("cupsfilter", runner)) {
+  if (commandExists("textutil", runner, c) && commandExists("cupsfilter", runner, c)) {
     reasons["textutil-cups"] = "available — TEXT-ONLY fallback (strips formatting)";
   } else {
     reasons["textutil-cups"] = "skipped — requires textutil and cupsfilter";
