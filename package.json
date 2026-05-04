@@ -1,0 +1,21 @@
+{
+  "name": "docx2pdf-cli",
+  "version": "0.1.0",
+  "description": "Minimal macOS CLI for converting DOCX files to PDF.",
+  "type": "commonjs",
+  "bin": {
+    "docx2pdf": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "docx",
+    "pdf",
+    "cli",
+    "macos",
+    "pages",
+    "word"
+  ],
+  "license": "MIT"
+}

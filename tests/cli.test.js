@@ -1,0 +1,384 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const {
+  CliError,
+  convertDocxToPdf,
+  convertWithLibreOffice,
+  convertWithGotenberg,
+  convertWithConvertApi,
+  EXIT,
+  getAvailableBackends,
+  parseArgs,
+  resolvePaths,
+  selectBackend
+} = require("../src/index");
+
+test("parseArgs parses input, output, backend, and overwrite", () => {
+  const parsed = parseArgs([
+    "--backend",
+    "textutil-cups",
+    "--overwrite",
+    "input.docx",
+    "output.pdf"
+  ]);
+
+  assert.equal(parsed.backend, "textutil-cups");
+  assert.equal(parsed.overwrite, true);
+  assert.equal(parsed.input, "input.docx");
+  assert.equal(parsed.output, "output.pdf");
+});
+
+test("parseArgs rejects unknown options", () => {
+  assert.throws(() => parseArgs(["--wat", "input.docx"]), CliError);
+});
+
+test("resolvePaths defaults output next to input", () => {
+  const resolved = resolvePaths("/tmp/demo.docx");
+  assert.equal(resolved.output, "/tmp/demo.pdf");
+});
+
+test("selectBackend prefers the first available backend in auto mode", () => {
+  assert.equal(selectBackend("auto", ["pages", "textutil-cups"]), "pages");
+});
+
+test("getAvailableBackends detects command-backed fallback", () => {
+  const calls = [];
+  const runner = (command, args) => {
+    calls.push([command, args]);
+
+    if (command === "sh" && args[1].includes("osascript")) {
+      return { status: 0, stdout: "/usr/bin/osascript\n", stderr: "" };
+    }
+
+    if (command === "osascript") {
+      return { status: 1, stdout: "", stderr: "missing app" };
+    }
+
+    if (command === "sh" && args[1].includes("textutil")) {
+      return { status: 0, stdout: "/usr/bin/textutil\n", stderr: "" };
+    }
+
+    if (command === "sh" && args[1].includes("cupsfilter")) {
+      return { status: 0, stdout: "/usr/sbin/cupsfilter\n", stderr: "" };
+    }
+
+    throw new Error(`Unexpected call: ${command} ${args.join(" ")}`);
+  };
+
+  assert.deepEqual(getAvailableBackends(runner), ["textutil-cups"]);
+  assert.ok(calls.length > 0);
+});
+
+test("convertDocxToPdf writes a PDF with textutil-cups backend", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    const output = path.join(tempDir, "sample.pdf");
+    fs.writeFileSync(input, "placeholder");
+
+    const runner = (command, args, options = {}) => {
+      if (command === "sh" && args[1].includes("osascript")) {
+        return { status: 0, stdout: "/usr/bin/osascript\n", stderr: "" };
+      }
+
+      if (command === "osascript") {
+        return { status: 1, stdout: "", stderr: "missing app" };
+      }
+
+      if (command === "sh" && args[1].includes("textutil")) {
+        return { status: 0, stdout: "/usr/bin/textutil\n", stderr: "" };
+      }
+
+      if (command === "sh" && args[1].includes("cupsfilter")) {
+        return { status: 0, stdout: "/usr/sbin/cupsfilter\n", stderr: "" };
+      }
+
+      if (command === "textutil") {
+        assert.deepEqual(args, ["-convert", "txt", "-stdout", input]);
+        return { status: 0, stdout: "Hello from docx\n", stderr: "" };
+      }
+
+      if (command === "cupsfilter") {
+        assert.deepEqual(args.slice(0, 2), ["-m", "application/pdf"]);
+        assert.equal(options.encoding, "buffer");
+        return { status: 0, stdout: Buffer.from("%PDF-1.4\nfake\n"), stderr: Buffer.alloc(0) };
+      }
+
+      throw new Error(`Unexpected call: ${command} ${args.join(" ")}`);
+    };
+
+    const result = convertDocxToPdf({ input, output, backend: "textutil-cups" }, runner);
+
+    assert.equal(result.backend, "textutil-cups");
+    assert.equal(fs.existsSync(output), true);
+    assert.match(fs.readFileSync(output, "utf8"), /%PDF-1.4/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("parseArgs rejects --backend with no value", () => {
+  assert.throws(() => parseArgs(["--backend"]), /Missing value after --backend/);
+});
+
+test("parseArgs rejects unsupported backend at selection time", () => {
+  assert.throws(() => selectBackend("nope", []), /Unsupported backend/);
+});
+
+test("selectBackend errors when requested backend is unavailable", () => {
+  assert.throws(() => selectBackend("pages", ["textutil-cups"]), /not available/);
+});
+
+test("selectBackend errors in auto mode with no available backends", () => {
+  assert.throws(() => selectBackend("auto", []), /No conversion backend available/);
+});
+
+test("parseArgs rejects non-numeric --timeout-seconds", () => {
+  assert.throws(() => parseArgs(["--timeout-seconds", "soon", "in.docx"]), /Missing numeric value/);
+});
+
+test("parseArgs rejects zero or negative --timeout-seconds", () => {
+  assert.throws(() => parseArgs(["--timeout-seconds=0", "in.docx"]), /must be > 0/);
+});
+
+test("parseArgs rejects too many positional args", () => {
+  assert.throws(() => parseArgs(["a.docx", "b.pdf", "extra"]), /Usage:/);
+});
+
+test("parseArgs rejects no positional args", () => {
+  assert.throws(() => parseArgs([]), /Usage:/);
+});
+
+test("parseArgs accepts --help without positional args", () => {
+  const o = parseArgs(["--help"]);
+  assert.equal(o.help, true);
+});
+
+test("parseArgs accepts equals form for --backend and --timeout-seconds", () => {
+  const o = parseArgs(["--backend=pages", "--timeout-seconds=30", "in.docx"]);
+  assert.equal(o.backend, "pages");
+  assert.equal(o.timeoutSeconds, 30);
+});
+
+test("convertWithLibreOffice writes into tmpdir then moves into place", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    const output = path.join(tempDir, "renamed.pdf");
+    fs.writeFileSync(input, "placeholder");
+
+    let capturedOutdir = null;
+    const runner = (command, args) => {
+      if (command === "sh" && args[1].includes("soffice")) {
+        return { status: 0, stdout: "/usr/bin/soffice\n", stderr: "" };
+      }
+      if (command === "soffice") {
+        const idx = args.indexOf("--outdir");
+        capturedOutdir = args[idx + 1];
+        const generated = path.join(capturedOutdir, "sample.pdf");
+        fs.writeFileSync(generated, "%PDF-1.4\nfake\n");
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      throw new Error(`Unexpected call: ${command} ${args.join(" ")}`);
+    };
+
+    convertWithLibreOffice(input, output, runner, 1000);
+
+    assert.ok(capturedOutdir, "soffice should have been invoked with --outdir");
+    assert.notEqual(capturedOutdir, path.dirname(output), "outdir must be a tmpdir, not the output dir");
+    assert.equal(fs.existsSync(output), true);
+    assert.match(fs.readFileSync(output, "utf8"), /%PDF-1.4/);
+    assert.equal(fs.existsSync(capturedOutdir), false, "tmpdir must be cleaned up");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("convertWithLibreOffice surfaces stderr on failure", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    const output = path.join(tempDir, "sample.pdf");
+    fs.writeFileSync(input, "placeholder");
+
+    const runner = (command, args) => {
+      if (command === "sh" && args[1].includes("soffice")) {
+        return { status: 0, stdout: "/usr/bin/soffice\n", stderr: "" };
+      }
+      if (command === "soffice") {
+        return { status: 1, stdout: "", stderr: "boom: corrupt document\n" };
+      }
+      throw new Error(`Unexpected call: ${command} ${args.join(" ")}`);
+    };
+
+    assert.throws(
+      () => convertWithLibreOffice(input, output, runner, 1000),
+      /LibreOffice conversion failed: boom: corrupt document/
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("convertWithGotenberg errors when GOTENBERG_URL is unset", () => {
+  const previous = process.env.GOTENBERG_URL;
+  delete process.env.GOTENBERG_URL;
+  try {
+    assert.throws(
+      () => convertWithGotenberg("in.docx", "out.pdf", () => { throw new Error("runner should not be called"); }, 1000),
+      (err) => err instanceof CliError && err.exitCode === EXIT.MISSING_DEP && /GOTENBERG_URL is required/.test(err.message)
+    );
+  } finally {
+    if (previous !== undefined) process.env.GOTENBERG_URL = previous;
+  }
+});
+
+test("convertWithGotenberg trims trailing slashes from base URL", () => {
+  const previous = process.env.GOTENBERG_URL;
+  process.env.GOTENBERG_URL = "http://example.test:3000///";
+  try {
+    let captured = null;
+    const runner = (command, args) => {
+      if (command === "curl") {
+        captured = args;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      throw new Error(`Unexpected call: ${command}`);
+    };
+    convertWithGotenberg("in.docx", "out.pdf", runner, 1000);
+    const endpoint = captured[captured.indexOf("POST") + 1];
+    assert.equal(endpoint, "http://example.test:3000/forms/libreoffice/convert");
+    assert.ok(captured.includes("-fL"), "curl must use -fL to fail on HTTP errors");
+  } finally {
+    if (previous === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous;
+  }
+});
+
+test("convertWithGotenberg cleans up partial output on HTTP failure", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  const previous = process.env.GOTENBERG_URL;
+  process.env.GOTENBERG_URL = "http://example.test:3000";
+  try {
+    const output = path.join(tempDir, "out.pdf");
+    const runner = (command) => {
+      if (command === "curl") {
+        fs.writeFileSync(output, "partial");
+        return { status: 22, stdout: "", stderr: "The requested URL returned error: 500\n" };
+      }
+      throw new Error(`Unexpected call: ${command}`);
+    };
+    assert.throws(
+      () => convertWithGotenberg("in.docx", output, runner, 1000),
+      /Gotenberg conversion failed/
+    );
+    assert.equal(fs.existsSync(output), false, "partial output must be removed");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous;
+  }
+});
+
+test("convertWithConvertApi errors when CONVERTAPI_SECRET is unset", () => {
+  const previous = process.env.CONVERTAPI_SECRET;
+  delete process.env.CONVERTAPI_SECRET;
+  try {
+    assert.throws(
+      () => convertWithConvertApi("in.docx", "out.pdf", () => { throw new Error("runner should not be called"); }, 1000),
+      (err) => err instanceof CliError && err.exitCode === EXIT.MISSING_DEP && /CONVERTAPI_SECRET is required/.test(err.message)
+    );
+  } finally {
+    if (previous !== undefined) process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("convertWithConvertApi sends secret via Authorization header, not URL", () => {
+  const previous = process.env.CONVERTAPI_SECRET;
+  process.env.CONVERTAPI_SECRET = "s3cret-token";
+  try {
+    const calls = [];
+    const runner = (command, args) => {
+      calls.push(args);
+      if (calls.length === 1) {
+        return { status: 0, stdout: JSON.stringify({ Files: [{ Url: "https://example.test/out.pdf" }] }), stderr: "" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    convertWithConvertApi("in.docx", "out.pdf", runner, 1000);
+
+    const post = calls[0];
+    const url = post[post.indexOf("POST") + 1];
+    assert.equal(url, "https://v2.convertapi.com/convert/docx/to/pdf");
+    assert.ok(!url.includes("s3cret-token"), "secret must not appear in URL");
+    assert.ok(!post.some(a => typeof a === "string" && a.includes("Secret=")), "no Secret= form/query");
+    const headerIdx = post.indexOf("-H");
+    assert.notEqual(headerIdx, -1);
+    assert.equal(post[headerIdx + 1], "Authorization: Bearer s3cret-token");
+    assert.ok(post.includes("-f"), "curl must use -f to fail on HTTP errors");
+
+    const dl = calls[1];
+    assert.ok(dl.includes("-fL"));
+    assert.ok(dl.includes("https://example.test/out.pdf"));
+  } finally {
+    if (previous === undefined) delete process.env.CONVERTAPI_SECRET;
+    else process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("convertWithConvertApi errors on invalid JSON response", () => {
+  const previous = process.env.CONVERTAPI_SECRET;
+  process.env.CONVERTAPI_SECRET = "x";
+  try {
+    const runner = () => ({ status: 0, stdout: "<html>not json</html>", stderr: "" });
+    assert.throws(
+      () => convertWithConvertApi("in.docx", "out.pdf", runner, 1000),
+      /ConvertAPI returned invalid JSON/
+    );
+  } finally {
+    if (previous === undefined) delete process.env.CONVERTAPI_SECRET;
+    else process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("convertWithConvertApi errors when response is missing file URL", () => {
+  const previous = process.env.CONVERTAPI_SECRET;
+  process.env.CONVERTAPI_SECRET = "x";
+  try {
+    const runner = () => ({ status: 0, stdout: JSON.stringify({ Files: [] }), stderr: "" });
+    assert.throws(
+      () => convertWithConvertApi("in.docx", "out.pdf", runner, 1000),
+      /missing output URL/
+    );
+  } finally {
+    if (previous === undefined) delete process.env.CONVERTAPI_SECRET;
+    else process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("convertDocxToPdf refuses overwrite without flag", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    const output = path.join(tempDir, "sample.pdf");
+    fs.writeFileSync(input, "placeholder");
+    fs.writeFileSync(output, "existing");
+
+    assert.throws(
+      () => convertDocxToPdf({ input, output, backend: "textutil-cups" }, () => {
+        throw new Error("runner should not be called");
+      }),
+      /Output file already exists/
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
