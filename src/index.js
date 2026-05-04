@@ -6,6 +6,14 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const BACKENDS = ["libreoffice", "gotenberg", "convertapi", "pages", "word", "textutil-cups"];
+const BACKEND_FIDELITY = {
+  libreoffice: "high",
+  gotenberg: "high",
+  convertapi: "high",
+  pages: "high",
+  word: "high",
+  "textutil-cups": "text-only"
+};
 const EXIT = { USAGE: 2, MISSING_DEP: 3, CONVERT_FAIL: 4 };
 
 class CliError extends Error {
@@ -80,9 +88,52 @@ function getBackendDiagnostics(runner = runCommand) {
   };
 }
 
-function selectBackend(preferred, available) {
+function getBackendReasons(runner = runCommand) {
+  const reasons = {};
+  reasons.libreoffice = (commandExists("soffice", runner) || commandExists("lowriter", runner))
+    ? "available — high fidelity, local"
+    : "skipped — install LibreOffice (provides soffice or lowriter)";
+  if (process.env.GOTENBERG_URL) {
+    reasons.gotenberg = commandExists("curl", runner)
+      ? `available — high fidelity, server: ${process.env.GOTENBERG_URL}`
+      : "skipped — GOTENBERG_URL set but curl not found";
+  } else {
+    reasons.gotenberg = "skipped — set GOTENBERG_URL to enable";
+  }
+  if (process.env.CONVERTAPI_SECRET) {
+    reasons.convertapi = commandExists("curl", runner)
+      ? "available — high fidelity, cloud"
+      : "skipped — CONVERTAPI_SECRET set but curl not found";
+  } else {
+    reasons.convertapi = "skipped — set CONVERTAPI_SECRET to enable";
+  }
+  reasons.pages = appScriptable("Pages", runner)
+    ? "available — high fidelity, macOS"
+    : "skipped — Apple Pages not installed or not scriptable";
+  reasons.word = appScriptable("Microsoft Word", runner)
+    ? "available — high fidelity, macOS"
+    : "skipped — Microsoft Word not installed or not scriptable";
+  if (commandExists("textutil", runner) && commandExists("cupsfilter", runner)) {
+    reasons["textutil-cups"] = "available — TEXT-ONLY fallback (strips formatting)";
+  } else {
+    reasons["textutil-cups"] = "skipped — requires textutil and cupsfilter";
+  }
+  return reasons;
+}
+
+function selectBackend(preferred, available, options = {}) {
+  const { strict = false } = options;
   if (preferred === "auto") {
-    if (available.length) return available[0];
+    const candidates = strict
+      ? available.filter((b) => BACKEND_FIDELITY[b] === "high")
+      : available;
+    if (candidates.length) return candidates[0];
+    if (strict && available.length) {
+      throw new CliError(
+        `No high-fidelity backend available. Available text-only fallback: ${available.join(", ")}. Install LibreOffice or set GOTENBERG_URL/CONVERTAPI_SECRET.`,
+        EXIT.MISSING_DEP
+      );
+    }
     throw new CliError("No conversion backend available. Install LibreOffice, Pages, Word, or use textutil+cupsfilter.", EXIT.MISSING_DEP);
   }
   if (!BACKENDS.includes(preferred)) throw new CliError(`Unsupported backend '${preferred}'.`, EXIT.USAGE);
@@ -91,7 +142,19 @@ function selectBackend(preferred, available) {
 }
 
 function parseArgs(argv) {
-  const o = { backend: "auto", overwrite: false, help: false, version: false, timeoutSeconds: 120, listBackends: false, doctor: false };
+  const o = {
+    backend: "auto",
+    overwrite: false,
+    help: false,
+    version: false,
+    timeoutSeconds: 120,
+    listBackends: false,
+    doctor: false,
+    quiet: false,
+    json: false,
+    why: false,
+    strictFidelity: false
+  };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -100,6 +163,10 @@ function parseArgs(argv) {
     if (a === "--overwrite" || a === "--force") { o.overwrite = true; continue; }
     if (a === "--list-backends") { o.listBackends = true; continue; }
     if (a === "--doctor") { o.doctor = true; continue; }
+    if (a === "--quiet" || a === "-q") { o.quiet = true; continue; }
+    if (a === "--json") { o.json = true; continue; }
+    if (a === "--why") { o.why = true; continue; }
+    if (a === "--strict-fidelity") { o.strictFidelity = true; continue; }
     if (a.startsWith("--backend=")) { o.backend = a.split("=",2)[1]; continue; }
     if (a === "--backend") { o.backend = argv[++i]; if (!o.backend) throw new CliError("Missing value after --backend.", EXIT.USAGE); continue; }
     if (a.startsWith("--timeout-seconds=")) { o.timeoutSeconds = Number(a.split("=",2)[1]); continue; }
@@ -277,10 +344,10 @@ function convertWithTextutilCups(input, output, runner = runCommand, timeoutMs =
 }
 
 function convertDocxToPdf(options, runner = runCommand) {
-  const { input, output, backend = "auto", overwrite = false, timeoutSeconds = 120 } = options;
+  const { input, output, backend = "auto", overwrite = false, timeoutSeconds = 120, strictFidelity = false } = options;
   const { input: i, output: o } = resolvePaths(input, output);
   validatePaths(i, o, overwrite);
-  const selected = selectBackend(backend, getAvailableBackends(runner));
+  const selected = selectBackend(backend, getAvailableBackends(runner), { strict: strictFidelity });
   const timeoutMs = Math.floor(timeoutSeconds * 1000);
   if (selected === "libreoffice") convertWithLibreOffice(i, o, runner, timeoutMs);
   else if (selected === "gotenberg") convertWithGotenberg(i, o, runner, timeoutMs);
@@ -293,7 +360,24 @@ function convertDocxToPdf(options, runner = runCommand) {
 }
 
 function usageText() {
-  return `docx2pdf - convert DOCX to PDF\n\nUsage:\n  docx2pdf [options] <input.docx> [output.pdf]\n\nOptions:\n  --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>\n  --timeout-seconds <n>\n  --overwrite, --force\n  --list-backends\n  --doctor\n  -h, --help\n  -v, --version\n`;
+  return `docx2pdf - convert DOCX to PDF
+
+Usage:
+  docx2pdf [options] <input.docx> [output.pdf]
+
+Options:
+  --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
+  --strict-fidelity         in auto mode, refuse to fall back to text-only backend
+  --timeout-seconds <n>     conversion timeout (default: 120)
+  --overwrite, --force      replace existing output file
+  --quiet, -q               suppress success output (errors still print)
+  --json                    emit machine-readable JSON result
+  --why                     print backend selection reasoning to stderr
+  --list-backends           show available backends and exit
+  --doctor                  print full diagnostics as JSON and exit
+  -h, --help
+  -v, --version
+`;
 }
 
-module.exports = { BACKENDS, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi };
+module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi };

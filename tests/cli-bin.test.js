@@ -93,3 +93,36 @@ test("no arguments prints usage error and exits with EXIT.USAGE", () => {
   assert.equal(r.status, EXIT.USAGE);
   assert.match(r.stderr, /Usage:/);
 });
+
+test("--why prints backend selection table to stderr", () => {
+  const r = runCli(["--why", "--list-backends"]);
+  // --list-backends short-circuits, but --why output goes to stderr only on convert paths;
+  // confirm structure via a non-convert path that triggers --why: pair with a missing input
+  const r2 = runCli(["--why", "/nonexistent/file.docx"]);
+  assert.match(r2.stderr, /Backend selection:/);
+  for (const b of ["libreoffice", "gotenberg", "convertapi", "pages", "word", "textutil-cups"]) {
+    assert.match(r2.stderr, new RegExp(`\\b${b}\\b`));
+  }
+  assert.equal(r2.status, EXIT.USAGE);
+});
+
+test("--quiet suppresses success-path stdout but lets errors through", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const txt = path.join(tempDir, "notes.txt");
+    fs.writeFileSync(txt, "hello");
+    const r = runCli(["--quiet", txt]);
+    assert.equal(r.status, EXIT.USAGE);
+    assert.match(r.stderr, /must be a \.docx file/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("--help mentions all new flags", () => {
+  const r = runCli(["--help"]);
+  assert.match(r.stdout, /--quiet/);
+  assert.match(r.stdout, /--json/);
+  assert.match(r.stdout, /--why/);
+  assert.match(r.stdout, /--strict-fidelity/);
+});

@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  BACKEND_FIDELITY,
   CliError,
   convertDocxToPdf,
   convertWithLibreOffice,
@@ -14,6 +15,7 @@ const {
   convertWithConvertApi,
   EXIT,
   getAvailableBackends,
+  getBackendReasons,
   parseArgs,
   resolvePaths,
   selectBackend
@@ -360,6 +362,133 @@ test("convertWithConvertApi errors when response is missing file URL", () => {
   } finally {
     if (previous === undefined) delete process.env.CONVERTAPI_SECRET;
     else process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("BACKEND_FIDELITY tags textutil-cups as text-only and others as high", () => {
+  assert.equal(BACKEND_FIDELITY["textutil-cups"], "text-only");
+  for (const b of ["libreoffice", "gotenberg", "convertapi", "pages", "word"]) {
+    assert.equal(BACKEND_FIDELITY[b], "high", `${b} should be high fidelity`);
+  }
+});
+
+test("selectBackend with strict excludes text-only fallbacks", () => {
+  assert.equal(
+    selectBackend("auto", ["libreoffice", "textutil-cups"], { strict: true }),
+    "libreoffice"
+  );
+});
+
+test("selectBackend with strict errors when only text-only available", () => {
+  assert.throws(
+    () => selectBackend("auto", ["textutil-cups"], { strict: true }),
+    /No high-fidelity backend available/
+  );
+});
+
+test("selectBackend with strict still errors when nothing available", () => {
+  assert.throws(
+    () => selectBackend("auto", [], { strict: true }),
+    /No conversion backend available/
+  );
+});
+
+test("selectBackend without strict still picks textutil-cups in auto mode", () => {
+  assert.equal(selectBackend("auto", ["textutil-cups"]), "textutil-cups");
+});
+
+test("selectBackend with strict still honors explicit non-auto request", () => {
+  assert.equal(
+    selectBackend("textutil-cups", ["textutil-cups"], { strict: true }),
+    "textutil-cups"
+  );
+});
+
+test("getBackendReasons returns a reason string for every known backend", () => {
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("osascript")) return { status: 0, stdout: "/usr/bin/osascript\n", stderr: "" };
+    if (command === "osascript") return { status: 1, stdout: "", stderr: "missing app" };
+    if (command === "sh") return { status: 1, stdout: "", stderr: "" };
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  const reasons = getBackendReasons(runner);
+  for (const b of ["libreoffice", "gotenberg", "convertapi", "pages", "word", "textutil-cups"]) {
+    assert.ok(typeof reasons[b] === "string" && reasons[b].length > 0, `missing reason for ${b}`);
+  }
+});
+
+test("getBackendReasons reports gotenberg env-driven activation", () => {
+  const previous = process.env.GOTENBERG_URL;
+  process.env.GOTENBERG_URL = "http://test.local:3000";
+  try {
+    const runner = (command) => {
+      if (command === "sh") return { status: 0, stdout: "/usr/bin/curl\n", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    };
+    const reasons = getBackendReasons(runner);
+    assert.match(reasons.gotenberg, /available/);
+    assert.match(reasons.gotenberg, /test\.local:3000/);
+  } finally {
+    if (previous === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous;
+  }
+});
+
+test("getBackendReasons explains why convertapi is skipped without secret", () => {
+  const previous = process.env.CONVERTAPI_SECRET;
+  delete process.env.CONVERTAPI_SECRET;
+  try {
+    const reasons = getBackendReasons(() => ({ status: 1, stdout: "", stderr: "" }));
+    assert.match(reasons.convertapi, /CONVERTAPI_SECRET/);
+  } finally {
+    if (previous !== undefined) process.env.CONVERTAPI_SECRET = previous;
+  }
+});
+
+test("parseArgs accepts --quiet, -q, --json, --why, --strict-fidelity flags", () => {
+  const o1 = parseArgs(["--quiet", "--json", "--why", "--strict-fidelity", "in.docx"]);
+  assert.equal(o1.quiet, true);
+  assert.equal(o1.json, true);
+  assert.equal(o1.why, true);
+  assert.equal(o1.strictFidelity, true);
+  const o2 = parseArgs(["-q", "in.docx"]);
+  assert.equal(o2.quiet, true);
+});
+
+test("convertDocxToPdf passes strictFidelity through to selectBackend", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const input = path.join(tempDir, "sample.docx");
+    const output = path.join(tempDir, "sample.pdf");
+    fs.writeFileSync(input, "placeholder");
+
+    const previous = {
+      go: process.env.GOTENBERG_URL,
+      ca: process.env.CONVERTAPI_SECRET
+    };
+    delete process.env.GOTENBERG_URL;
+    delete process.env.CONVERTAPI_SECRET;
+
+    try {
+      const runner = (command, args) => {
+        if (command === "sh" && args[1].includes("soffice")) return { status: 1, stdout: "", stderr: "" };
+        if (command === "sh" && args[1].includes("lowriter")) return { status: 1, stdout: "", stderr: "" };
+        if (command === "sh" && args[1].includes("osascript")) return { status: 0, stdout: "/usr/bin/osascript\n", stderr: "" };
+        if (command === "osascript") return { status: 1, stdout: "", stderr: "" };
+        if (command === "sh" && args[1].includes("textutil")) return { status: 0, stdout: "/usr/bin/textutil\n", stderr: "" };
+        if (command === "sh" && args[1].includes("cupsfilter")) return { status: 0, stdout: "/usr/sbin/cupsfilter\n", stderr: "" };
+        return { status: 1, stdout: "", stderr: "" };
+      };
+      assert.throws(
+        () => convertDocxToPdf({ input, output, backend: "auto", strictFidelity: true }, runner),
+        /No high-fidelity backend available/
+      );
+    } finally {
+      if (previous.go !== undefined) process.env.GOTENBERG_URL = previous.go;
+      if (previous.ca !== undefined) process.env.CONVERTAPI_SECRET = previous.ca;
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
