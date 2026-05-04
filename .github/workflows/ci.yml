@@ -18,5 +18,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - name: Install LibreOffice (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice
       - run: npm ci || npm install
       - run: npm test
+      - name: Smoke-test the published bin layout
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        run: |
+          npm pack
+          npm install -g docx2pdf-cli-*.tgz
+          docx2pdf --version
+          docx2pdf --doctor

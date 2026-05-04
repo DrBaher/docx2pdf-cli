@@ -29,6 +29,26 @@ function envWithoutBackends() {
   return env;
 }
 
+test("smoke: end-to-end LibreOffice conversion of fixture produces a valid PDF", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-smoke-"));
+  try {
+    const fixture = path.join(__dirname, "fixtures", "sample.docx");
+    const out = path.join(tempDir, "smoke.pdf");
+    const r = runCli(["--backend", "libreoffice", fixture, out]);
+    if (r.status === EXIT.MISSING_DEP) {
+      t.skip("LibreOffice not installed; CI installs it on Ubuntu");
+      return;
+    }
+    assert.equal(r.status, 0, `conversion failed: ${r.stderr}`);
+    assert.equal(fs.existsSync(out), true);
+    const buf = fs.readFileSync(out);
+    assert.equal(buf.slice(0, 5).toString("utf8"), "%PDF-", `output is not a PDF`);
+    assert.ok(buf.length > 100, `output PDF is suspiciously small (${buf.length} bytes)`);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("--help prints usage and exits 0", () => {
   const r = runCli(["--help"]);
   assert.equal(r.status, 0);
