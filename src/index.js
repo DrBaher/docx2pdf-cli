@@ -186,7 +186,7 @@ function parseArgs(argv) {
   if (o.checkFonts) {
     if (pos.length < 1) throw new CliError("--check-fonts requires an input file", EXIT.USAGE);
     o.input = pos[0];
-    o.inputs = [pos[0]];
+    o.inputs = pos;
     return o;
   }
   if (pos.length < 1) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]\n       docx2pdf [options] --out-dir <dir> <input.docx>...", EXIT.USAGE);
@@ -435,12 +435,39 @@ function listSystemFonts(runner = runCommand) {
   return families;
 }
 
+const FONT_STYLE_SUFFIXES = [
+  "thin", "extra light", "extralight", "ultra light", "ultralight",
+  "light", "regular", "normal", "book", "medium",
+  "semi bold", "semibold", "demi bold", "demibold",
+  "bold", "extra bold", "extrabold", "ultra bold", "ultrabold",
+  "black", "heavy",
+  "italic", "oblique"
+];
+
+function fontFamilyMatches(docFont, sysFonts) {
+  const lower = docFont.toLowerCase();
+  if (sysFonts.has(lower)) return true;
+  let stripped = lower;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffix of FONT_STYLE_SUFFIXES) {
+      if (stripped.endsWith(" " + suffix)) {
+        stripped = stripped.slice(0, -(suffix.length + 1)).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return stripped !== lower && sysFonts.has(stripped);
+}
+
 function checkFonts(input, runner = runCommand) {
   const docxFonts = listDocxFonts(input, runner);
   if (docxFonts === null) return { available: false, reason: "unzip not found", all: [], missing: [] };
   const sysFonts = listSystemFonts(runner);
   if (sysFonts === null) return { available: false, reason: "fc-list not found (install fontconfig)", all: docxFonts, missing: [] };
-  const missing = docxFonts.filter((f) => !sysFonts.has(f.toLowerCase()));
+  const missing = docxFonts.filter((f) => !fontFamilyMatches(f, sysFonts));
   return { available: true, all: docxFonts, missing };
 }
 
@@ -485,4 +512,4 @@ Options:
 `;
 }
 
-module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts, expandIfGlob, expandInputs };
+module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts, fontFamilyMatches, expandIfGlob, expandInputs };

@@ -212,21 +212,41 @@ test("--check-fonts handles both fc-list-available and missing hosts", () => {
   }
 });
 
-test("--check-fonts --json emits structured output when fc-list is present", () => {
+test("--check-fonts --json emits one NDJSON line per input", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
   try {
     const fake = path.join(tempDir, "fake.docx");
     fs.writeFileSync(fake, "not a real zip");
     const r = runCli(["--check-fonts", "--json", fake]);
-    if (r.status === 0) {
-      const obj = JSON.parse(r.stdout.trim());
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const obj = JSON.parse(lines[0]);
+    assert.equal(obj.input, fake);
+    if (obj.available === false) {
+      assert.equal(r.status, EXIT.MISSING_DEP);
+      assert.ok(obj.reason);
+    } else {
+      assert.equal(r.status, 0);
       assert.ok(Array.isArray(obj.all));
       assert.ok(Array.isArray(obj.missing));
-      assert.equal(obj.input, fake);
-    } else {
-      assert.equal(r.status, EXIT.MISSING_DEP);
-      assert.match(r.stderr, /Cannot check fonts/);
     }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("--check-fonts --json with multiple inputs emits one line per input", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const a = path.join(tempDir, "a.docx");
+    const b = path.join(tempDir, "b.docx");
+    const c = path.join(tempDir, "c.docx");
+    [a, b, c].forEach((p) => fs.writeFileSync(p, "not a real zip"));
+    const r = runCli(["--check-fonts", "--json", a, b, c]);
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 3, `expected 3 NDJSON lines, got: ${r.stdout}`);
+    const inputs = lines.map((l) => JSON.parse(l).input);
+    assert.deepEqual(inputs, [a, b, c]);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

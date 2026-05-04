@@ -17,6 +17,7 @@ const {
   EXIT,
   expandIfGlob,
   expandInputs,
+  fontFamilyMatches,
   getAvailableBackends,
   getBackendReasons,
   listDocxFonts,
@@ -602,6 +603,32 @@ test("listSystemFonts parses comma-separated family aliases case-insensitively",
   assert.ok(fonts.has("arial"));
 });
 
+test("fontFamilyMatches matches exactly when present", () => {
+  const sys = new Set(["calibri", "times new roman"]);
+  assert.equal(fontFamilyMatches("Calibri", sys), true);
+  assert.equal(fontFamilyMatches("Times New Roman", sys), true);
+});
+
+test("fontFamilyMatches strips standard weight/style suffixes", () => {
+  const sys = new Set(["calibri", "times new roman", "arial"]);
+  assert.equal(fontFamilyMatches("Calibri Light", sys), true);
+  assert.equal(fontFamilyMatches("Calibri Bold", sys), true);
+  assert.equal(fontFamilyMatches("Times New Roman Bold Italic", sys), true);
+  assert.equal(fontFamilyMatches("Arial Black", sys), true);
+});
+
+test("fontFamilyMatches does NOT match different family names that look like suffixes", () => {
+  const sys = new Set(["helvetica"]);
+  // "Helvetica Neue" is a different family — Neue is not a recognized weight/style suffix
+  assert.equal(fontFamilyMatches("Helvetica Neue", sys), false);
+});
+
+test("fontFamilyMatches returns false when family not installed at all", () => {
+  const sys = new Set(["arial"]);
+  assert.equal(fontFamilyMatches("Calibri", sys), false);
+  assert.equal(fontFamilyMatches("Calibri Light", sys), false);
+});
+
 test("checkFonts reports missing fonts case-insensitively", () => {
   const xml = `<w:fonts><w:font w:name="Calibri"/><w:font w:name="Helvetica"/></w:fonts>`;
   const runner = (command, args) => {
@@ -647,6 +674,11 @@ test("parseArgs --check-fonts populates input and inputs", () => {
   assert.equal(o.checkFonts, true);
   assert.equal(o.input, "doc.docx");
   assert.deepEqual(o.inputs, ["doc.docx"]);
+});
+
+test("parseArgs --check-fonts accepts multiple inputs", () => {
+  const o = parseArgs(["--check-fonts", "a.docx", "b.docx", "c.docx"]);
+  assert.deepEqual(o.inputs, ["a.docx", "b.docx", "c.docx"]);
 });
 
 test("expandIfGlob returns literal when path exists", () => {

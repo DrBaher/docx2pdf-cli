@@ -71,7 +71,7 @@ async function runParallel(inputs, options, outDirAbs, willUseLOEngine) {
       if (parsed) {
         results[idx] = parsed;
       } else {
-        const message = (r.stderr.trim() || `child exited with status ${r.status}`).split("\n").pop();
+        const message = r.stderr.trim() || `child exited with status ${r.status}`;
         results[idx] = { ok: false, input: inputPath, error: message, exitCode: r.status || EXIT.CONVERT_FAIL };
       }
     }
@@ -149,27 +149,41 @@ function main(argv) {
   }
 
   if (options.checkFonts) {
-    const fc = checkFonts(options.input);
-    if (!fc.available) {
-      process.stderr.write(`Cannot check fonts: ${fc.reason}\n`);
-      return EXIT.MISSING_DEP;
-    }
-    if (options.json) {
-      process.stdout.write(`${JSON.stringify({ input: options.input, all: fc.all, missing: fc.missing })}\n`);
-      return 0;
-    }
-    process.stdout.write(`Fonts in ${path.basename(options.input)}:\n`);
-    if (fc.all.length === 0) {
-      process.stdout.write("  (no fontTable.xml entries — DOCX may not declare any fonts)\n");
-    } else {
-      const missingSet = new Set(fc.missing);
-      for (const f of fc.all) {
-        process.stdout.write(`  [${missingSet.has(f) ? "MISSING" : "ok     "}] ${f}\n`);
+    const inputs = expandInputs(options.inputs);
+    let allUnavailable = true;
+    let lastUnavailableReason = null;
+    for (let idx = 0; idx < inputs.length; idx += 1) {
+      const input = inputs[idx];
+      const fc = checkFonts(input);
+      if (!fc.available) {
+        lastUnavailableReason = fc.reason;
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify({ input, available: false, reason: fc.reason })}\n`);
+        } else {
+          process.stderr.write(`Cannot check fonts for ${path.basename(input)}: ${fc.reason}\n`);
+        }
+        continue;
+      }
+      allUnavailable = false;
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ input, all: fc.all, missing: fc.missing })}\n`);
+        continue;
+      }
+      if (idx > 0) process.stdout.write("\n");
+      process.stdout.write(`Fonts in ${path.basename(input)}:\n`);
+      if (fc.all.length === 0) {
+        process.stdout.write("  (no fontTable.xml entries — DOCX may not declare any fonts)\n");
+      } else {
+        const missingSet = new Set(fc.missing);
+        for (const f of fc.all) {
+          process.stdout.write(`  [${missingSet.has(f) ? "MISSING" : "ok     "}] ${f}\n`);
+        }
+      }
+      if (fc.missing.length) {
+        process.stdout.write(`\n${fc.missing.length} font(s) not installed; LibreOffice/Gotenberg will substitute them silently.\n`);
       }
     }
-    if (fc.missing.length) {
-      process.stdout.write(`\n${fc.missing.length} font(s) not installed; LibreOffice/Gotenberg will substitute them silently.\n`);
-    }
+    if (allUnavailable && lastUnavailableReason !== null) return EXIT.MISSING_DEP;
     return 0;
   }
 
