@@ -8,6 +8,21 @@ Honest, batch-aware DOCX → PDF converter with hybrid backends.
 - **Font preflight** — warns when fonts in the document aren't installed before LibreOffice/Gotenberg substitute them silently.
 - **Six pluggable backends**, with strict-fidelity guard against the text-only fallback.
 
+## Install
+
+```bash
+npm i -g docx2pdf-cli
+```
+
+Or from a clone:
+
+```bash
+git clone https://github.com/DrBaher/docx2pdf-cli.git
+cd docx2pdf-cli && ./install.sh
+```
+
+You'll also need at least one backend's runtime — LibreOffice (`brew install --cask libreoffice` on macOS, `apt install libreoffice` on Debian/Ubuntu) is the easiest. Run `docx2pdf --doctor` to see what's available.
+
 ## Backends (auto order)
 
 | Backend | Fidelity | Requires |
@@ -102,11 +117,6 @@ docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 | 3 | Required backend or tool unavailable |
 | 4 | Conversion failed |
 
-## Install
-```bash
-./install.sh
-```
+## License
 
-## Publish
-- npm: `npm publish` so users can `npm i -g docx2pdf-cli`
-- Optional: a Homebrew tap formula for macOS users
+MIT — see [LICENSE](LICENSE).
