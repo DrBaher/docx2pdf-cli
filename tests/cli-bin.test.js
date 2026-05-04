@@ -125,4 +125,74 @@ test("--help mentions all new flags", () => {
   assert.match(r.stdout, /--json/);
   assert.match(r.stdout, /--why/);
   assert.match(r.stdout, /--strict-fidelity/);
+  assert.match(r.stdout, /--out-dir/);
+});
+
+test("batch mode with --out-dir + --json emits one NDJSON line per file and continues on errors", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const inputs = [
+      path.join(tempDir, "missing1.docx"),
+      path.join(tempDir, "missing2.docx"),
+      path.join(tempDir, "missing3.docx")
+    ];
+    const r = runCli(["--json", "--out-dir", outDir, ...inputs]);
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 3, `expected 3 NDJSON lines, got: ${r.stdout}`);
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      const obj = JSON.parse(lines[idx]);
+      assert.equal(obj.ok, false);
+      assert.match(obj.input, new RegExp(`missing${idx + 1}\\.docx$`));
+      assert.ok(obj.error && obj.error.length > 0);
+    }
+    assert.equal(r.status, EXIT.USAGE, "exit code should be the first failure's exit code");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("batch mode without --json reports per-file failures on stderr", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const inputs = [
+      path.join(tempDir, "missing1.docx"),
+      path.join(tempDir, "missing2.docx")
+    ];
+    const r = runCli(["--out-dir", outDir, ...inputs]);
+    assert.match(r.stderr, /Failed: .*missing1\.docx/);
+    assert.match(r.stderr, /Failed: .*missing2\.docx/);
+    assert.equal(r.status, EXIT.USAGE);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("batch mode --quiet suppresses per-file Failed lines", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const inputs = [path.join(tempDir, "missing.docx"), path.join(tempDir, "missing2.docx")];
+    const r = runCli(["--quiet", "--out-dir", outDir, ...inputs]);
+    assert.equal(r.stderr, "");
+    assert.notEqual(r.status, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("single-file mode with --json emits one success-shape line if conversion succeeds", () => {
+  // Without a real conversion backend in test, this would be flaky;
+  // use a missing file to confirm single-file mode does NOT use NDJSON
+  // failure shape — single-file failures go through stderr like before.
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const r = runCli(["--json", path.join(tempDir, "missing.docx")]);
+    assert.equal(r.stdout, "", "single-file failure does not write to stdout");
+    assert.match(r.stderr, /Input file not found/);
+    assert.equal(r.status, EXIT.USAGE);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

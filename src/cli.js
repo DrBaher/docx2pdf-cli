@@ -65,12 +65,36 @@ function main(argv) {
 
   if (options.why) printWhy(options);
 
-  const result = convertDocxToPdf(options);
+  const inputs = options.inputs;
+  const isBatch = inputs.length > 1 || options.outDir != null;
+  const outDirAbs = options.outDir ? path.resolve(options.outDir) : null;
+  const failures = [];
 
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
-  } else if (!options.quiet) {
-    process.stdout.write(`Converted ${path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
+  for (const inputPath of inputs) {
+    const output = outDirAbs
+      ? path.join(outDirAbs, `${path.basename(inputPath, path.extname(inputPath))}.pdf`)
+      : options.output;
+    try {
+      const result = convertDocxToPdf({ ...options, input: inputPath, output });
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
+      } else if (!options.quiet) {
+        process.stdout.write(`Converted ${path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
+      }
+    } catch (err) {
+      if (!isBatch) throw err;
+      failures.push({ input: inputPath, err });
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: false, input: inputPath, error: err.message })}\n`);
+      } else if (!options.quiet) {
+        process.stderr.write(`Failed: ${inputPath}: ${err.message}\n`);
+      }
+    }
+  }
+
+  if (failures.length) {
+    const firstWithExit = failures.find(f => f.err && typeof f.err.exitCode === "number");
+    return firstWithExit ? firstWithExit.err.exitCode : EXIT.CONVERT_FAIL;
   }
   return 0;
 }

@@ -150,8 +150,25 @@ test("parseArgs rejects zero or negative --timeout-seconds", () => {
   assert.throws(() => parseArgs(["--timeout-seconds=0", "in.docx"]), /must be > 0/);
 });
 
-test("parseArgs rejects too many positional args", () => {
-  assert.throws(() => parseArgs(["a.docx", "b.pdf", "extra"]), /Usage:/);
+test("parseArgs rejects 3+ positional args without --out-dir", () => {
+  assert.throws(() => parseArgs(["a.docx", "b.pdf", "extra"]), /Multiple inputs require --out-dir/);
+});
+
+test("parseArgs accepts multiple inputs with --out-dir", () => {
+  const o = parseArgs(["--out-dir", "/tmp/pdfs", "a.docx", "b.docx", "c.docx"]);
+  assert.deepEqual(o.inputs, ["a.docx", "b.docx", "c.docx"]);
+  assert.equal(o.outDir, "/tmp/pdfs");
+  assert.equal(o.output, null);
+});
+
+test("parseArgs single input + --out-dir routes through batch path", () => {
+  const o = parseArgs(["--out-dir", "/tmp/pdfs", "a.docx"]);
+  assert.deepEqual(o.inputs, ["a.docx"]);
+  assert.equal(o.outDir, "/tmp/pdfs");
+});
+
+test("parseArgs --out-dir with no value errors", () => {
+  assert.throws(() => parseArgs(["--out-dir"]), /Missing value after --out-dir/);
 });
 
 test("parseArgs rejects no positional args", () => {

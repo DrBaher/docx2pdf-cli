@@ -153,7 +153,8 @@ function parseArgs(argv) {
     quiet: false,
     json: false,
     why: false,
-    strictFidelity: false
+    strictFidelity: false,
+    outDir: null
   };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -171,13 +172,29 @@ function parseArgs(argv) {
     if (a === "--backend") { o.backend = argv[++i]; if (!o.backend) throw new CliError("Missing value after --backend.", EXIT.USAGE); continue; }
     if (a.startsWith("--timeout-seconds=")) { o.timeoutSeconds = Number(a.split("=",2)[1]); continue; }
     if (a === "--timeout-seconds") { o.timeoutSeconds = Number(argv[++i]); if (!Number.isFinite(o.timeoutSeconds)) throw new CliError("Missing numeric value after --timeout-seconds.", EXIT.USAGE); continue; }
+    if (a.startsWith("--out-dir=")) { o.outDir = a.split("=",2)[1]; continue; }
+    if (a === "--out-dir") { o.outDir = argv[++i]; if (!o.outDir) throw new CliError("Missing value after --out-dir.", EXIT.USAGE); continue; }
     if (a.startsWith("--")) throw new CliError(`Unknown option '${a}'.`, EXIT.USAGE);
     pos.push(a);
   }
   if (o.help || o.version || o.listBackends || o.doctor) return o;
-  if (pos.length < 1 || pos.length > 2) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]", EXIT.USAGE);
+  if (pos.length < 1) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]\n       docx2pdf [options] --out-dir <dir> <input.docx>...", EXIT.USAGE);
   if (!Number.isFinite(o.timeoutSeconds) || o.timeoutSeconds <= 0) throw new CliError("--timeout-seconds must be > 0", EXIT.USAGE);
-  o.input = pos[0]; o.output = pos[1];
+
+  if (o.outDir) {
+    o.inputs = pos;
+    o.input = pos[0];
+    o.output = null;
+  } else if (pos.length === 1) {
+    o.inputs = pos;
+    o.input = pos[0];
+  } else if (pos.length === 2) {
+    o.inputs = [pos[0]];
+    o.input = pos[0];
+    o.output = pos[1];
+  } else {
+    throw new CliError("Multiple inputs require --out-dir <dir>", EXIT.USAGE);
+  }
   return o;
 }
 
@@ -374,14 +391,16 @@ function usageText() {
 
 Usage:
   docx2pdf [options] <input.docx> [output.pdf]
+  docx2pdf [options] --out-dir <dir> <input.docx>...
 
 Options:
   --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
   --strict-fidelity         in auto mode, refuse to fall back to text-only backend
+  --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
   --timeout-seconds <n>     conversion timeout (default: 120)
   --overwrite, --force      replace existing output file
   --quiet, -q               suppress success output (errors still print)
-  --json                    emit machine-readable JSON result
+  --json                    emit machine-readable JSON (NDJSON in batch mode)
   --why                     print backend selection reasoning to stderr
   --list-backends           show available backends and exit
   --doctor                  print full diagnostics as JSON and exit
