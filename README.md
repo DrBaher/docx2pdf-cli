@@ -1,19 +1,25 @@
 # docx2pdf-cli
 
-CLI-first DOCX → PDF converter with hybrid backends.
+Honest, batch-aware DOCX → PDF converter with hybrid backends.
 
-## Hybrid backend order (auto)
-1. `libreoffice` (local headless, best local fidelity)
-2. `gotenberg` (self-hosted server)
-3. `convertapi` (cloud API)
-4. `pages` (Apple Pages)
-5. `word` (Microsoft Word)
-6. `textutil-cups` (text-only fallback)
+- **Tells you which backend ran and why** — `--why` prints the full decision tree; no opaque "auto" mode that silently picks a low-fidelity fallback.
+- **Concurrency-safe LibreOffice** — each call gets its own `UserInstallation` profile dir, so parallel invocations don't deadlock on a shared profile.
+- **Batch mode with NDJSON** — convert globs of inputs into an output directory, with one structured line per file for CI piping.
+- **Font preflight** — warns when fonts in the document aren't installed before LibreOffice/Gotenberg substitute them silently.
+- **Six pluggable backends**, with strict-fidelity guard against the text-only fallback.
 
-## No ConvertAPI required
-Yes — you can run fully without ConvertAPI:
-- Local only: install LibreOffice (`soffice`) and use `--backend libreoffice` (or auto)
-- Self-hosted: run Gotenberg and set `GOTENBERG_URL`
+## Backends (auto order)
+
+| Backend | Fidelity | Requires |
+|---|---|---|
+| `libreoffice` | high (local) | `soffice` or `lowriter` |
+| `gotenberg` | high (server) | `GOTENBERG_URL` + `curl` |
+| `convertapi` | high (cloud) | `CONVERTAPI_SECRET` + `curl` |
+| `pages` | high (macOS) | Apple Pages, Automation permission |
+| `word` | high (macOS) | Microsoft Word, Automation permission |
+| `textutil-cups` | text-only | `textutil` + `cupsfilter` (macOS) |
+
+`auto` selects the first available. Add `--strict-fidelity` to refuse the `textutil-cups` fallback when no high-fidelity backend is available.
 
 ## Quick start
 
@@ -34,31 +40,69 @@ export CONVERTAPI_SECRET="<your-secret>"
 docx2pdf --backend convertapi input.docx output.pdf
 ```
 
+### Batch mode
+```bash
+docx2pdf --out-dir ./pdfs *.docx
+docx2pdf --json --out-dir ./pdfs *.docx | jq
+```
+
+In batch mode, one bad file does not stop the rest. With `--json`, each file emits one NDJSON line:
+
+```json
+{"ok":true,"backend":"libreoffice","input":"/abs/a.docx","output":"/abs/pdfs/a.pdf"}
+{"ok":false,"input":"/abs/b.docx","error":"LibreOffice conversion failed: ..."}
+```
+
+Exit code is `0` only if every file succeeded.
+
+## Diagnostics
+
+```bash
+docx2pdf --list-backends            # which backends are usable on this machine
+docx2pdf --doctor                   # full diagnostics as JSON
+docx2pdf --why input.docx           # print backend selection reasoning to stderr, then convert
+docx2pdf --check-fonts input.docx   # report which fonts in the document are missing
+```
+
+`--check-fonts` requires `unzip` and `fc-list` (install fontconfig on macOS via `brew install fontconfig`).
+
 ## Run Gotenberg locally (Docker)
 ```bash
 docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 ```
 
-## Diagnostics
-```bash
-docx2pdf --list-backends
-docx2pdf --doctor
+## All options
+
+```
+--backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
+--strict-fidelity         in auto mode, refuse to fall back to text-only backend
+--out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
+--timeout-seconds <n>     conversion timeout (default: 120)
+--overwrite, --force      replace existing output file
+--quiet, -q               suppress success output (errors still print)
+--json                    emit machine-readable JSON (NDJSON in batch mode)
+--why                     print backend selection reasoning to stderr
+--check-fonts             report which fonts in the .docx are missing
+--list-backends           show available backends and exit
+--doctor                  print full diagnostics as JSON and exit
+-h, --help
+-v, --version
 ```
 
-## Options
-- `--backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>`
-- `--timeout-seconds <n>` (default: 120)
-- `--overwrite` / `--force`
-- `--list-backends`
-- `--doctor`
-- `-h, --help`
-- `-v, --version`
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 2 | Usage / bad arguments |
+| 3 | Required backend or tool unavailable |
+| 4 | Conversion failed |
 
 ## Install
 ```bash
 ./install.sh
 ```
 
-## Publish to wider world
-- Publish on npm (`npm publish`) so users can `npm i -g docx2pdf-cli`
-- Optional: provide a Homebrew tap formula for macOS users
+## Publish
+- npm: `npm publish` so users can `npm i -g docx2pdf-cli`
+- Optional: a Homebrew tap formula for macOS users
