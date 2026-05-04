@@ -2,6 +2,7 @@
 "use strict";
 
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 const pkg = require("../package.json");
 const {
   BACKENDS,
@@ -16,6 +17,88 @@ const {
   getBackendReasons,
   selectBackend
 } = require("./index");
+
+function buildChildArgs(options, inputPath, outDirAbs) {
+  const args = ["--json", "--quiet", "--out-dir", outDirAbs];
+  if (options.backend !== "auto") args.push("--backend", options.backend);
+  if (options.strictFidelity) args.push("--strict-fidelity");
+  if (options.overwrite) args.push("--overwrite");
+  if (options.timeoutSeconds !== 120) args.push("--timeout-seconds", String(options.timeoutSeconds));
+  args.push(inputPath);
+  return args;
+}
+
+function spawnChild(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [__filename, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+async function runParallel(inputs, options, outDirAbs, willUseLOEngine) {
+  const concurrency = Math.min(options.concurrency, inputs.length);
+  const results = new Array(inputs.length);
+  let next = 0;
+
+  async function worker() {
+    while (true) {
+      const idx = next++;
+      if (idx >= inputs.length) return;
+      const inputPath = inputs[idx];
+
+      if (willUseLOEngine && !options.quiet) {
+        const fc = checkFonts(inputPath);
+        if (fc.available && fc.missing.length) {
+          const list = fc.missing.slice(0, 5).join(", ");
+          const more = fc.missing.length > 5 ? `, ... +${fc.missing.length - 5} more` : "";
+          process.stderr.write(`Warning: ${path.basename(inputPath)}: ${fc.missing.length} font(s) not installed (${list}${more}); LibreOffice will substitute.\n`);
+        }
+      }
+
+      const childArgs = buildChildArgs(options, inputPath, outDirAbs);
+      const r = await spawnChild(childArgs);
+      let parsed = null;
+      const line = r.stdout.trim().split("\n").pop();
+      if (line) {
+        try { parsed = JSON.parse(line); } catch { /* fallthrough to error */ }
+      }
+      if (parsed) {
+        results[idx] = parsed;
+      } else {
+        const message = (r.stderr.trim() || `child exited with status ${r.status}`).split("\n").pop();
+        results[idx] = { ok: false, input: inputPath, error: message, exitCode: r.status || EXIT.CONVERT_FAIL };
+      }
+    }
+  }
+
+  const workers = Array(concurrency).fill(0).map(() => worker());
+  await Promise.all(workers);
+
+  let firstFailureExit = 0;
+  for (const result of results) {
+    if (result.ok) {
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
+      } else {
+        process.stdout.write(`Converted ${path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
+      }
+    } else {
+      if (options.json) {
+        const { exitCode, ...rest } = result;
+        process.stdout.write(`${JSON.stringify(rest)}\n`);
+      } else if (!options.quiet) {
+        process.stderr.write(`Failed: ${result.input}: ${result.error}\n`);
+      }
+      if (firstFailureExit === 0) firstFailureExit = result.exitCode || EXIT.CONVERT_FAIL;
+    }
+  }
+  return firstFailureExit;
+}
 
 function printWhy(options) {
   const reasons = getBackendReasons();
@@ -102,8 +185,12 @@ function main(argv) {
   const inputs = options.inputs;
   const isBatch = inputs.length > 1 || options.outDir != null;
   const outDirAbs = options.outDir ? path.resolve(options.outDir) : null;
-  const failures = [];
 
+  if (options.concurrency > 1 && inputs.length > 1) {
+    return runParallel(inputs, options, outDirAbs, willUseLOEngine);
+  }
+
+  const failures = [];
   for (const inputPath of inputs) {
     const output = outDirAbs
       ? path.join(outDirAbs, `${path.basename(inputPath, path.extname(inputPath))}.pdf`)
@@ -142,17 +229,18 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (error) {
-    if (error instanceof CliError) {
-      process.stderr.write(`${error.message}\n`);
-      process.exitCode = error.exitCode;
-    } else {
-      process.stderr.write(`${error.stack || String(error)}\n`);
-      process.exitCode = 1;
-    }
-  }
+  Promise.resolve()
+    .then(() => main(process.argv.slice(2)))
+    .then((code) => { process.exitCode = code; })
+    .catch((error) => {
+      if (error instanceof CliError) {
+        process.stderr.write(`${error.message}\n`);
+        process.exitCode = error.exitCode;
+      } else {
+        process.stderr.write(`${error.stack || String(error)}\n`);
+        process.exitCode = 1;
+      }
+    });
 }
 
 module.exports = { main };

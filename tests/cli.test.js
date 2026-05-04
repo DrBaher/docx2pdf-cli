@@ -647,6 +647,28 @@ test("parseArgs --check-fonts populates input and inputs", () => {
   assert.deepEqual(o.inputs, ["doc.docx"]);
 });
 
+test("parseArgs accepts --concurrency=N and --concurrency N", () => {
+  const o1 = parseArgs(["--concurrency=4", "in.docx"]);
+  assert.equal(o1.concurrency, 4);
+  const o2 = parseArgs(["--concurrency", "8", "in.docx"]);
+  assert.equal(o2.concurrency, 8);
+});
+
+test("parseArgs defaults --concurrency to 1", () => {
+  const o = parseArgs(["in.docx"]);
+  assert.equal(o.concurrency, 1);
+});
+
+test("parseArgs rejects --concurrency with non-positive or non-integer values", () => {
+  assert.throws(() => parseArgs(["--concurrency=0", "in.docx"]), /positive integer/);
+  assert.throws(() => parseArgs(["--concurrency=-2", "in.docx"]), /positive integer/);
+  assert.throws(() => parseArgs(["--concurrency=1.5", "in.docx"]), /positive integer/);
+});
+
+test("parseArgs rejects --concurrency with no value", () => {
+  assert.throws(() => parseArgs(["--concurrency"]), /Missing numeric value/);
+});
+
 test("convertDocxToPdf refuses overwrite without flag", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
 

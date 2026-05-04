@@ -228,6 +228,51 @@ test("--check-fonts errors out without an input", () => {
   assert.match(r.stderr, /requires an input file/);
 });
 
+test("parallel batch with --concurrency emits one NDJSON line per input in input order", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const inputs = [
+      path.join(tempDir, "alpha.docx"),
+      path.join(tempDir, "bravo.docx"),
+      path.join(tempDir, "charlie.docx"),
+      path.join(tempDir, "delta.docx")
+    ];
+    const r = runCli(["--concurrency=3", "--json", "--out-dir", outDir, ...inputs]);
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 4, `expected 4 NDJSON lines, got: ${r.stdout}\n stderr: ${r.stderr}`);
+    const parsed = lines.map((l) => JSON.parse(l));
+    assert.equal(parsed[0].input, inputs[0], "results emitted in input order");
+    assert.equal(parsed[1].input, inputs[1]);
+    assert.equal(parsed[2].input, inputs[2]);
+    assert.equal(parsed[3].input, inputs[3]);
+    for (const p of parsed) {
+      assert.equal(p.ok, false);
+      assert.ok(p.error);
+    }
+    assert.notEqual(r.status, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("parallel batch with --concurrency without --json prints per-file lines", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const outDir = path.join(tempDir, "out");
+    const inputs = [
+      path.join(tempDir, "alpha.docx"),
+      path.join(tempDir, "bravo.docx")
+    ];
+    const r = runCli(["--concurrency=2", "--out-dir", outDir, ...inputs]);
+    assert.match(r.stderr, /Failed: .*alpha\.docx/);
+    assert.match(r.stderr, /Failed: .*bravo\.docx/);
+    assert.notEqual(r.status, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("single-file mode with --json emits one success-shape line if conversion succeeds", () => {
   // Without a real conversion backend in test, this would be flaky;
   // use a missing file to confirm single-file mode does NOT use NDJSON

@@ -155,7 +155,8 @@ function parseArgs(argv) {
     why: false,
     strictFidelity: false,
     outDir: null,
-    checkFonts: false
+    checkFonts: false,
+    concurrency: 1
   };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -170,6 +171,8 @@ function parseArgs(argv) {
     if (a === "--why") { o.why = true; continue; }
     if (a === "--strict-fidelity") { o.strictFidelity = true; continue; }
     if (a === "--check-fonts") { o.checkFonts = true; continue; }
+    if (a.startsWith("--concurrency=")) { o.concurrency = Number(a.split("=",2)[1]); continue; }
+    if (a === "--concurrency") { o.concurrency = Number(argv[++i]); if (!Number.isFinite(o.concurrency)) throw new CliError("Missing numeric value after --concurrency.", EXIT.USAGE); continue; }
     if (a.startsWith("--backend=")) { o.backend = a.split("=",2)[1]; continue; }
     if (a === "--backend") { o.backend = argv[++i]; if (!o.backend) throw new CliError("Missing value after --backend.", EXIT.USAGE); continue; }
     if (a.startsWith("--timeout-seconds=")) { o.timeoutSeconds = Number(a.split("=",2)[1]); continue; }
@@ -188,6 +191,7 @@ function parseArgs(argv) {
   }
   if (pos.length < 1) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]\n       docx2pdf [options] --out-dir <dir> <input.docx>...", EXIT.USAGE);
   if (!Number.isFinite(o.timeoutSeconds) || o.timeoutSeconds <= 0) throw new CliError("--timeout-seconds must be > 0", EXIT.USAGE);
+  if (!Number.isInteger(o.concurrency) || o.concurrency < 1) throw new CliError("--concurrency must be a positive integer", EXIT.USAGE);
 
   if (o.outDir) {
     o.inputs = pos;
@@ -438,6 +442,7 @@ Options:
   --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
   --strict-fidelity         in auto mode, refuse to fall back to text-only backend
   --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
+  --concurrency <n>         run up to N conversions in parallel in batch mode (default: 1)
   --timeout-seconds <n>     conversion timeout (default: 120)
   --overwrite, --force      replace existing output file
   --quiet, -q               suppress success output (errors still print)
