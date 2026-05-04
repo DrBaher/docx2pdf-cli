@@ -154,7 +154,8 @@ function parseArgs(argv) {
     json: false,
     why: false,
     strictFidelity: false,
-    outDir: null
+    outDir: null,
+    checkFonts: false
   };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -168,6 +169,7 @@ function parseArgs(argv) {
     if (a === "--json") { o.json = true; continue; }
     if (a === "--why") { o.why = true; continue; }
     if (a === "--strict-fidelity") { o.strictFidelity = true; continue; }
+    if (a === "--check-fonts") { o.checkFonts = true; continue; }
     if (a.startsWith("--backend=")) { o.backend = a.split("=",2)[1]; continue; }
     if (a === "--backend") { o.backend = argv[++i]; if (!o.backend) throw new CliError("Missing value after --backend.", EXIT.USAGE); continue; }
     if (a.startsWith("--timeout-seconds=")) { o.timeoutSeconds = Number(a.split("=",2)[1]); continue; }
@@ -178,6 +180,12 @@ function parseArgs(argv) {
     pos.push(a);
   }
   if (o.help || o.version || o.listBackends || o.doctor) return o;
+  if (o.checkFonts) {
+    if (pos.length < 1) throw new CliError("--check-fonts requires an input file", EXIT.USAGE);
+    o.input = pos[0];
+    o.inputs = [pos[0]];
+    return o;
+  }
   if (pos.length < 1) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]\n       docx2pdf [options] --out-dir <dir> <input.docx>...", EXIT.USAGE);
   if (!Number.isFinite(o.timeoutSeconds) || o.timeoutSeconds <= 0) throw new CliError("--timeout-seconds must be > 0", EXIT.USAGE);
 
@@ -370,6 +378,39 @@ function convertWithTextutilCups(input, output, runner = runCommand, timeoutMs =
   } finally { fs.rmSync(tempDir, { recursive: true, force: true }); }
 }
 
+function listDocxFonts(input, runner = runCommand) {
+  if (!commandExists("unzip", runner)) return null;
+  const r = runner("unzip", ["-p", input, "word/fontTable.xml"], { timeoutMs: 5000 });
+  if (r.status !== 0) return [];
+  const xml = String(r.stdout || "");
+  const fonts = new Set();
+  for (const m of xml.matchAll(/<w:font\s+w:name="([^"]+)"/g)) fonts.add(m[1]);
+  return [...fonts];
+}
+
+function listSystemFonts(runner = runCommand) {
+  if (!commandExists("fc-list", runner)) return null;
+  const r = runner("fc-list", [":", "family"], { timeoutMs: 5000 });
+  if (r.status !== 0) return null;
+  const families = new Set();
+  for (const line of String(r.stdout || "").split("\n")) {
+    for (const fam of line.split(",")) {
+      const trimmed = fam.trim();
+      if (trimmed) families.add(trimmed.toLowerCase());
+    }
+  }
+  return families;
+}
+
+function checkFonts(input, runner = runCommand) {
+  const docxFonts = listDocxFonts(input, runner);
+  if (docxFonts === null) return { available: false, reason: "unzip not found", all: [], missing: [] };
+  const sysFonts = listSystemFonts(runner);
+  if (sysFonts === null) return { available: false, reason: "fc-list not found (install fontconfig)", all: docxFonts, missing: [] };
+  const missing = docxFonts.filter((f) => !sysFonts.has(f.toLowerCase()));
+  return { available: true, all: docxFonts, missing };
+}
+
 function convertDocxToPdf(options, runner = runCommand) {
   const { input, output, backend = "auto", overwrite = false, timeoutSeconds = 120, strictFidelity = false } = options;
   const { input: i, output: o } = resolvePaths(input, output);
@@ -402,6 +443,7 @@ Options:
   --quiet, -q               suppress success output (errors still print)
   --json                    emit machine-readable JSON (NDJSON in batch mode)
   --why                     print backend selection reasoning to stderr
+  --check-fonts             report which fonts in the .docx are missing
   --list-backends           show available backends and exit
   --doctor                  print full diagnostics as JSON and exit
   -h, --help
@@ -409,4 +451,4 @@ Options:
 `;
 }
 
-module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi };
+module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts };

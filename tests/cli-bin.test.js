@@ -182,6 +182,52 @@ test("batch mode --quiet suppresses per-file Failed lines", () => {
   }
 });
 
+test("--check-fonts handles both fc-list-available and missing hosts", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const fake = path.join(tempDir, "fake.docx");
+    fs.writeFileSync(fake, "not a real zip");
+    const r = runCli(["--check-fonts", fake]);
+    if (r.status === 0) {
+      // host has fc-list; non-zip means no fontTable entries detected
+      assert.match(r.stdout, /Fonts in fake\.docx/);
+      assert.match(r.stdout, /no fontTable\.xml entries|MISSING|ok/);
+    } else {
+      // host missing fc-list (or unzip)
+      assert.equal(r.status, EXIT.MISSING_DEP);
+      assert.match(r.stderr, /Cannot check fonts/);
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("--check-fonts --json emits structured output when fc-list is present", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
+  try {
+    const fake = path.join(tempDir, "fake.docx");
+    fs.writeFileSync(fake, "not a real zip");
+    const r = runCli(["--check-fonts", "--json", fake]);
+    if (r.status === 0) {
+      const obj = JSON.parse(r.stdout.trim());
+      assert.ok(Array.isArray(obj.all));
+      assert.ok(Array.isArray(obj.missing));
+      assert.equal(obj.input, fake);
+    } else {
+      assert.equal(r.status, EXIT.MISSING_DEP);
+      assert.match(r.stderr, /Cannot check fonts/);
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("--check-fonts errors out without an input", () => {
+  const r = runCli(["--check-fonts"]);
+  assert.equal(r.status, EXIT.USAGE);
+  assert.match(r.stderr, /requires an input file/);
+});
+
 test("single-file mode with --json emits one success-shape line if conversion succeeds", () => {
   // Without a real conversion backend in test, this would be flaky;
   // use a missing file to confirm single-file mode does NOT use NDJSON

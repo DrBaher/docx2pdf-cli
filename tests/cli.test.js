@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   BACKEND_FIDELITY,
   CliError,
+  checkFonts,
   convertDocxToPdf,
   convertWithLibreOffice,
   convertWithGotenberg,
@@ -16,6 +17,8 @@ const {
   EXIT,
   getAvailableBackends,
   getBackendReasons,
+  listDocxFonts,
+  listSystemFonts,
   parseArgs,
   resolvePaths,
   selectBackend
@@ -544,6 +547,104 @@ test("convertDocxToPdf passes strictFidelity through to selectBackend", () => {
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test("listDocxFonts returns null when unzip is missing", () => {
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("unzip")) return { status: 1, stdout: "", stderr: "" };
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  assert.equal(listDocxFonts("/whatever.docx", runner), null);
+});
+
+test("listDocxFonts parses font names from fontTable.xml", () => {
+  const xml = `<?xml version="1.0"?>
+<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:font w:name="Calibri"><w:panose1 w:val="020F0502020204030204"/></w:font>
+  <w:font w:name="Times New Roman"><w:panose1 w:val="02020603050405020304"/></w:font>
+  <w:font w:name="Cambria"/>
+</w:fonts>`;
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("unzip")) return { status: 0, stdout: "/usr/bin/unzip\n", stderr: "" };
+    if (command === "unzip") return { status: 0, stdout: xml, stderr: "" };
+    throw new Error(`Unexpected: ${command}`);
+  };
+  const fonts = listDocxFonts("/some.docx", runner);
+  assert.deepEqual(fonts.sort(), ["Calibri", "Cambria", "Times New Roman"]);
+});
+
+test("listDocxFonts returns empty array when fontTable.xml is missing from archive", () => {
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("unzip")) return { status: 0, stdout: "/usr/bin/unzip\n", stderr: "" };
+    if (command === "unzip") return { status: 11, stdout: "", stderr: "no such file in archive" };
+    throw new Error(`Unexpected: ${command}`);
+  };
+  assert.deepEqual(listDocxFonts("/some.docx", runner), []);
+});
+
+test("listSystemFonts returns null when fc-list is missing", () => {
+  const runner = () => ({ status: 1, stdout: "", stderr: "" });
+  assert.equal(listSystemFonts(runner), null);
+});
+
+test("listSystemFonts parses comma-separated family aliases case-insensitively", () => {
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("fc-list")) return { status: 0, stdout: "/usr/bin/fc-list\n", stderr: "" };
+    if (command === "fc-list") return { status: 0, stdout: "Helvetica\nTimes,Times Regular\nArial\n", stderr: "" };
+    throw new Error(`Unexpected: ${command}`);
+  };
+  const fonts = listSystemFonts(runner);
+  assert.ok(fonts.has("helvetica"));
+  assert.ok(fonts.has("times"));
+  assert.ok(fonts.has("times regular"));
+  assert.ok(fonts.has("arial"));
+});
+
+test("checkFonts reports missing fonts case-insensitively", () => {
+  const xml = `<w:fonts><w:font w:name="Calibri"/><w:font w:name="Helvetica"/></w:fonts>`;
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("unzip")) return { status: 0, stdout: "/usr/bin/unzip\n", stderr: "" };
+    if (command === "sh" && args[1].includes("fc-list")) return { status: 0, stdout: "/usr/bin/fc-list\n", stderr: "" };
+    if (command === "unzip") return { status: 0, stdout: xml, stderr: "" };
+    if (command === "fc-list") return { status: 0, stdout: "helvetica\nTimes\n", stderr: "" };
+    throw new Error(`Unexpected: ${command}`);
+  };
+  const result = checkFonts("/some.docx", runner);
+  assert.equal(result.available, true);
+  assert.deepEqual(result.all.sort(), ["Calibri", "Helvetica"]);
+  assert.deepEqual(result.missing, ["Calibri"]);
+});
+
+test("checkFonts marks unavailable when unzip is missing", () => {
+  const runner = () => ({ status: 1, stdout: "", stderr: "" });
+  const result = checkFonts("/some.docx", runner);
+  assert.equal(result.available, false);
+  assert.match(result.reason, /unzip/);
+});
+
+test("checkFonts marks unavailable when fc-list is missing but lists docx fonts", () => {
+  const xml = `<w:fonts><w:font w:name="Calibri"/></w:fonts>`;
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("unzip")) return { status: 0, stdout: "/usr/bin/unzip\n", stderr: "" };
+    if (command === "sh" && args[1].includes("fc-list")) return { status: 1, stdout: "", stderr: "" };
+    if (command === "unzip") return { status: 0, stdout: xml, stderr: "" };
+    throw new Error(`Unexpected: ${command}`);
+  };
+  const result = checkFonts("/some.docx", runner);
+  assert.equal(result.available, false);
+  assert.match(result.reason, /fc-list/);
+  assert.deepEqual(result.all, ["Calibri"]);
+});
+
+test("parseArgs --check-fonts requires an input file", () => {
+  assert.throws(() => parseArgs(["--check-fonts"]), /requires an input file/);
+});
+
+test("parseArgs --check-fonts populates input and inputs", () => {
+  const o = parseArgs(["--check-fonts", "doc.docx"]);
+  assert.equal(o.checkFonts, true);
+  assert.equal(o.input, "doc.docx");
+  assert.deepEqual(o.inputs, ["doc.docx"]);
 });
 
 test("convertDocxToPdf refuses overwrite without flag", () => {

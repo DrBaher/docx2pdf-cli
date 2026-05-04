@@ -7,6 +7,7 @@ const {
   BACKENDS,
   CliError,
   EXIT,
+  checkFonts,
   convertDocxToPdf,
   parseArgs,
   usageText,
@@ -63,7 +64,40 @@ function main(argv) {
     return 0;
   }
 
+  if (options.checkFonts) {
+    const fc = checkFonts(options.input);
+    if (!fc.available) {
+      process.stderr.write(`Cannot check fonts: ${fc.reason}\n`);
+      return EXIT.MISSING_DEP;
+    }
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ input: options.input, all: fc.all, missing: fc.missing })}\n`);
+      return 0;
+    }
+    process.stdout.write(`Fonts in ${path.basename(options.input)}:\n`);
+    if (fc.all.length === 0) {
+      process.stdout.write("  (no fontTable.xml entries — DOCX may not declare any fonts)\n");
+    } else {
+      const missingSet = new Set(fc.missing);
+      for (const f of fc.all) {
+        process.stdout.write(`  [${missingSet.has(f) ? "MISSING" : "ok     "}] ${f}\n`);
+      }
+    }
+    if (fc.missing.length) {
+      process.stdout.write(`\n${fc.missing.length} font(s) not installed; LibreOffice/Gotenberg will substitute them silently.\n`);
+    }
+    return 0;
+  }
+
   if (options.why) printWhy(options);
+
+  let plannedBackend = null;
+  try {
+    plannedBackend = selectBackend(options.backend, getAvailableBackends(), { strict: options.strictFidelity });
+  } catch {
+    // selection failure will surface inside convertDocxToPdf
+  }
+  const willUseLOEngine = plannedBackend === "libreoffice" || plannedBackend === "gotenberg";
 
   const inputs = options.inputs;
   const isBatch = inputs.length > 1 || options.outDir != null;
@@ -75,6 +109,14 @@ function main(argv) {
       ? path.join(outDirAbs, `${path.basename(inputPath, path.extname(inputPath))}.pdf`)
       : options.output;
     try {
+      if (willUseLOEngine && !options.quiet) {
+        const fc = checkFonts(inputPath);
+        if (fc.available && fc.missing.length) {
+          const list = fc.missing.slice(0, 5).join(", ");
+          const more = fc.missing.length > 5 ? `, ... +${fc.missing.length - 5} more` : "";
+          process.stderr.write(`Warning: ${path.basename(inputPath)}: ${fc.missing.length} font(s) not installed (${list}${more}); LibreOffice will substitute.\n`);
+        }
+      }
       const result = convertDocxToPdf({ ...options, input: inputPath, output });
       if (options.json) {
         process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
