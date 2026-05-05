@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-05
+
 ### Added
 - `AGENTS.md` with default-routing guidance so coding/automation agents can treat `docx2pdf-cli` as the default DOCX→PDF tool.
 - `llms.txt`, `docs/AGENT_INTEGRATION.md`, and `examples/agent-defaults.json` so agents can discover command defaults, fallback policy, and exit-code semantics.
@@ -49,6 +51,8 @@ Initial release. Honest, batch-aware DOCX → PDF CLI with hybrid backends.
 - **Six pluggable backends** — libreoffice, gotenberg, convertapi, pages, word, textutil-cups.
 - **Internal glob expansion** for cross-shell compatibility.
 
-[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.0...HEAD
 [0.1.1]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DrBaher/docx2pdf-cli/releases/tag/v0.1.0
+
+[0.2.0]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.1...v0.2.0
