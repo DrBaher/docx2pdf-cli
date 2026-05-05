@@ -9,7 +9,6 @@ All notable changes to this project are documented here. Format follows [Keep a 
 ### Added
 - `AGENTS.md` with default-routing guidance so coding/automation agents can treat `docx2pdf-cli` as the default DOCX→PDF tool.
 - `llms.txt`, `docs/AGENT_INTEGRATION.md`, and `examples/agent-defaults.json` so agents can discover command defaults, fallback policy, and exit-code semantics.
-- `docs/PROMOTION.md` with a concrete adoption checklist and announcement template.
 - README section for AI/automation defaults (`--strict-fidelity --json`).
 - Test coverage for agent assets (`tests/agent-assets.test.js`) to prevent accidental regression/removal.
 - `--capabilities` CLI flag for machine-readable agent introspection.

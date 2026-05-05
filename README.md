@@ -163,6 +163,5 @@ MIT — see [LICENSE](LICENSE).
 
 ## Adoption resources
 
-- [Promotion & Adoption Plan](docs/PROMOTION.md)
 - [Agent Integration Guide](docs/AGENT_INTEGRATION.md)
 - [JSON Schemas](schemas/)
