@@ -8,8 +8,11 @@ const path = require("node:path");
 
 const {
   BACKEND_FIDELITY,
+  BACKENDS,
   CliError,
+  INSTALL_HINTS,
   checkFonts,
+  computeRecommendation,
   convertDocxToPdf,
   convertWithLibreOffice,
   convertWithGotenberg,
@@ -19,7 +22,9 @@ const {
   expandInputs,
   fontFamilyMatches,
   getAvailableBackends,
+  getBackendDiagnostics,
   getBackendReasons,
+  getInstallCommand,
   listDocxFonts,
   listSystemFonts,
   parseArgs,
@@ -844,5 +849,144 @@ test("convertDocxToPdf refuses overwrite without flag", () => {
     );
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// ----- Onboarding helpers -----
+
+test("INSTALL_HINTS covers every backend with at least one platform key", () => {
+  for (const b of BACKENDS) {
+    const hints = INSTALL_HINTS[b];
+    assert.ok(hints, `no INSTALL_HINTS for ${b}`);
+    assert.ok(Object.keys(hints).length > 0, `${b} hints is empty`);
+  }
+});
+
+test("getInstallCommand returns _all when present (gotenberg, convertapi)", () => {
+  const r = () => ({ status: 0, stdout: "", stderr: "" });
+  assert.match(getInstallCommand("gotenberg", r), /docker run/);
+  assert.match(getInstallCommand("convertapi", r), /CONVERTAPI_SECRET/);
+});
+
+test("getInstallCommand picks platform-specific hint for libreoffice", () => {
+  const r = () => ({ status: 0, stdout: "", stderr: "" });
+  const cmd = getInstallCommand("libreoffice", r);
+  if (process.platform === "darwin") {
+    assert.match(cmd, /brew install --cask libreoffice/);
+  }
+});
+
+test("computeRecommendation prefers Docker-Gotenberg when Docker is installed", () => {
+  const rec = computeRecommendation({
+    availableBackends: [],
+    tools: { docker: true }
+  });
+  assert.equal(rec.backend, "gotenberg");
+  assert.match(rec.command, /docker run/);
+});
+
+test("computeRecommendation falls back to libreoffice when no Docker and no high-fidelity backend", () => {
+  const rec = computeRecommendation({
+    availableBackends: [],
+    tools: { docker: false }
+  });
+  assert.equal(rec.backend, "libreoffice");
+});
+
+test("computeRecommendation returns null when a high-fidelity backend already works", () => {
+  const rec = computeRecommendation({
+    availableBackends: ["libreoffice"],
+    tools: { docker: false }
+  });
+  assert.equal(rec, null);
+});
+
+test("computeRecommendation still recommends when only text-only backend is available", () => {
+  const rec = computeRecommendation({
+    availableBackends: ["textutil-cups"],
+    tools: { docker: false }
+  });
+  assert.notEqual(rec, null);
+  assert.equal(rec.backend, "libreoffice");
+});
+
+test("getBackendDiagnostics includes tools.docker and backends[*].install", () => {
+  const runner = (command, args) => {
+    if (command === "sh" && args[1].includes("docker")) return { status: 0, stdout: "/usr/local/bin/docker\n", stderr: "" };
+    if (command === "sh") return { status: 1, stdout: "", stderr: "" };
+    if (command === "osascript") return { status: 1, stdout: "", stderr: "" };
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  const previous = { go: process.env.GOTENBERG_URL, ca: process.env.CONVERTAPI_SECRET };
+  delete process.env.GOTENBERG_URL;
+  delete process.env.CONVERTAPI_SECRET;
+  try {
+    const d = getBackendDiagnostics(runner);
+    assert.equal(d.tools.docker, true);
+    assert.equal(d.backends.libreoffice.available, false);
+    assert.ok(d.backends.libreoffice.install, "libreoffice should have an install hint");
+    assert.equal(d.backends.gotenberg.available, false);
+    assert.ok(d.recommendation, "Docker present + nothing installed should yield a recommendation");
+    assert.equal(d.recommendation.backend, "gotenberg");
+    // backwards-compat: flat tool keys still present at the top level
+    assert.equal(d.docker, true);
+    assert.equal("soffice" in d, true);
+    assert.equal("availableBackends" in d, true);
+  } finally {
+    if (previous.go !== undefined) process.env.GOTENBERG_URL = previous.go;
+    if (previous.ca !== undefined) process.env.CONVERTAPI_SECRET = previous.ca;
+  }
+});
+
+test("getBackendDiagnostics memoizes commandExists/appScriptable probes within one call", () => {
+  const probeCounts = {};
+  const runner = (command, args) => {
+    if (command === "sh") {
+      const m = args[1].match(/command -v '([^']+)'/);
+      const probed = m ? m[1] : "?";
+      probeCounts[`cmd:${probed}`] = (probeCounts[`cmd:${probed}`] || 0) + 1;
+      return { status: 0, stdout: "/usr/bin/" + probed + "\n", stderr: "" };
+    }
+    if (command === "osascript") {
+      const m = args[1].match(/id of application "([^"]+)"/);
+      const probed = m ? m[1] : "?";
+      probeCounts[`app:${probed}`] = (probeCounts[`app:${probed}`] || 0) + 1;
+      return { status: 1, stdout: "", stderr: "missing app" };
+    }
+    throw new Error(`Unexpected: ${command}`);
+  };
+  const previous = { go: process.env.GOTENBERG_URL, ca: process.env.CONVERTAPI_SECRET };
+  process.env.GOTENBERG_URL = "http://test.local:3000";
+  process.env.CONVERTAPI_SECRET = "x";
+  try {
+    getBackendDiagnostics(runner);
+    for (const [probe, count] of Object.entries(probeCounts)) {
+      assert.equal(count, 1, `probe ${probe} ran ${count} times — should have been cached at 1`);
+    }
+  } finally {
+    if (previous.go === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous.go;
+    if (previous.ca === undefined) delete process.env.CONVERTAPI_SECRET;
+    else process.env.CONVERTAPI_SECRET = previous.ca;
+  }
+});
+
+test("selectBackend tags 'NO_BACKEND' kind on CliError when no backends available", () => {
+  try {
+    selectBackend("auto", []);
+    assert.fail("expected throw");
+  } catch (err) {
+    assert.ok(err instanceof CliError);
+    assert.equal(err.kind, "NO_BACKEND");
+  }
+});
+
+test("selectBackend tags 'NO_BACKEND' kind in strict mode with only text-only", () => {
+  try {
+    selectBackend("auto", ["textutil-cups"], { strict: true });
+    assert.fail("expected throw");
+  } catch (err) {
+    assert.ok(err instanceof CliError);
+    assert.equal(err.kind, "NO_BACKEND");
   }
 });

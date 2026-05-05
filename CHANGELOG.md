@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-05
+
+### Added
+- **Smarter onboarding when no backend is available.** Generic "no conversion backend" error replaced (well, supplemented — the original message stays as the first line so existing parsers don't break) with a platform-specific recommendation and per-backend install commands printed inline. If Docker is detected, leads with the one-line `docker run gotenberg/gotenberg:8` path so the user doesn't need to install LibreOffice (~700MB) at all.
+- **`--doctor` JSON enriched with actionable setup data**:
+  - `platform` (`darwin` / `linux` / `win32`) and `platformKey` (`linux-apt`, `linux-dnf`, etc.)
+  - `tools.docker`, `tools.unzip`, `tools.fcList` (in addition to existing tool flags, all preserved at the top level for backwards compat)
+  - `backends[name]` object with `available`, `fidelity`, `reason`, and `install` (platform-specific install command)
+  - top-level `recommendation` field — single best next step for this host (Docker-Gotenberg if Docker is installed, else LibreOffice)
+- `CliError` now carries an optional `kind` property (e.g. `"NO_BACKEND"`) so library callers can branch on error type instead of error-message text.
+- `AGENTS.md` extended with a setup-recipe section covering the JSON shape, the discovery-then-install flow, the consent prompt pattern, and a clean-up note for Docker-started Gotenberg containers.
+
+### Changed
+- `commandExists` switched from `sh -lc` to `sh -c`. The login shell was reading user shell-init files and rebuilding `PATH`, sometimes returning probes for commands that `spawn()` itself couldn't actually find (e.g. when a parent process had cleared `PATH`).
+
 ## [0.2.0] - 2026-05-05
 
 ### Added
@@ -50,8 +65,8 @@ Initial release. Honest, batch-aware DOCX → PDF CLI with hybrid backends.
 - **Six pluggable backends** — libreoffice, gotenberg, convertapi, pages, word, textutil-cups.
 - **Internal glob expansion** for cross-shell compatibility.
 
-[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DrBaher/docx2pdf-cli/releases/tag/v0.1.0
-
-[0.2.0]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.1...v0.2.0

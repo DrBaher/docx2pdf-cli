@@ -17,10 +17,11 @@ const BACKEND_FIDELITY = {
 const EXIT = { USAGE: 2, MISSING_DEP: 3, CONVERT_FAIL: 4 };
 
 class CliError extends Error {
-  constructor(message, exitCode = 1) {
+  constructor(message, exitCode = 1, kind = null) {
     super(message);
     this.name = "CliError";
     this.exitCode = exitCode;
+    this.kind = kind;
   }
 }
 
@@ -49,7 +50,7 @@ function commandExists(command, runner = runCommand, cache = null) {
   if (cache && cache.has(key)) return cache.get(key);
   let result;
   try {
-    result = runner("sh", ["-lc", `command -v ${shellQuote(command)}`]).status === 0;
+    result = runner("sh", ["-c", `command -v ${shellQuote(command)}`]).status === 0;
   } catch {
     result = false;
   }
@@ -72,6 +73,75 @@ function appScriptable(appName, runner = runCommand, cache = null) {
   return result;
 }
 
+function detectLinuxPackageManager(runner = runCommand, cache = null) {
+  if (process.platform !== "linux") return null;
+  if (commandExists("apt-get", runner, cache)) return "apt";
+  if (commandExists("dnf", runner, cache)) return "dnf";
+  if (commandExists("yum", runner, cache)) return "yum";
+  if (commandExists("pacman", runner, cache)) return "pacman";
+  if (commandExists("apk", runner, cache)) return "apk";
+  return null;
+}
+
+function platformKey(runner = runCommand, cache = null) {
+  if (process.platform === "linux") {
+    const pm = detectLinuxPackageManager(runner, cache);
+    return pm ? `linux-${pm}` : "linux";
+  }
+  return process.platform;
+}
+
+const INSTALL_HINTS = {
+  libreoffice: {
+    darwin: "brew install --cask libreoffice",
+    "linux-apt": "sudo apt-get update && sudo apt-get install -y libreoffice",
+    "linux-dnf": "sudo dnf install -y libreoffice",
+    "linux-yum": "sudo yum install -y libreoffice",
+    "linux-pacman": "sudo pacman -S --noconfirm libreoffice-fresh",
+    "linux-apk": "sudo apk add libreoffice",
+    linux: "Install LibreOffice via your distro's package manager (apt-get / dnf / pacman / apk).",
+    win32: "winget install TheDocumentFoundation.LibreOffice"
+  },
+  gotenberg: {
+    _all: "docker run --rm -d -p 3000:3000 gotenberg/gotenberg:8 && export GOTENBERG_URL=http://127.0.0.1:3000"
+  },
+  convertapi: {
+    _all: "Get a secret at https://www.convertapi.com/, then: export CONVERTAPI_SECRET=<your-secret>"
+  },
+  pages: {
+    darwin: "Install Pages from the Mac App Store. On first run, grant Automation permission for the calling terminal/IDE in System Settings → Privacy & Security → Automation."
+  },
+  word: {
+    darwin: "Install Microsoft Word from the App Store or microsoft.com. On first run, grant Automation permission for the calling terminal/IDE."
+  },
+  "textutil-cups": {
+    darwin: "Built-in on macOS — should always be available."
+  }
+};
+
+function getInstallCommand(backend, runner = runCommand, cache = null) {
+  const hints = INSTALL_HINTS[backend] || {};
+  if (hints._all) return hints._all;
+  const key = platformKey(runner, cache);
+  return hints[key] || hints[process.platform] || null;
+}
+
+function computeRecommendation(diagnostics) {
+  if (diagnostics.availableBackends.some((b) => BACKEND_FIDELITY[b] === "high")) return null;
+  if (diagnostics.tools && diagnostics.tools.docker) {
+    return {
+      backend: "gotenberg",
+      rationale: "Docker is already installed. Run Gotenberg in a container in ~30 seconds without modifying your system.",
+      command: INSTALL_HINTS.gotenberg._all
+    };
+  }
+  return {
+    backend: "libreoffice",
+    rationale: "LibreOffice provides the best local-only fidelity. One-time install, no recurring cost, no internet required after install.",
+    command: getInstallCommand("libreoffice")
+  };
+}
+
 function getAvailableBackends(runner = runCommand, cache = null) {
   const c = cache || new Map();
   const out = [];
@@ -86,9 +156,7 @@ function getAvailableBackends(runner = runCommand, cache = null) {
 
 function getBackendDiagnostics(runner = runCommand) {
   const c = new Map();
-  return {
-    gotenbergUrl: process.env.GOTENBERG_URL || null,
-    convertapiSecret: Boolean(process.env.CONVERTAPI_SECRET),
+  const tools = {
     curl: commandExists("curl", runner, c),
     soffice: commandExists("soffice", runner, c),
     lowriter: commandExists("lowriter", runner, c),
@@ -97,12 +165,39 @@ function getBackendDiagnostics(runner = runCommand) {
     word: appScriptable("Microsoft Word", runner, c),
     textutil: commandExists("textutil", runner, c),
     cupsfilter: commandExists("cupsfilter", runner, c),
-    availableBackends: getAvailableBackends(runner, c)
+    docker: commandExists("docker", runner, c),
+    unzip: commandExists("unzip", runner, c),
+    fcList: commandExists("fc-list", runner, c)
   };
+  const availableBackends = getAvailableBackends(runner, c);
+  const reasons = getBackendReasons(runner, c);
+  const backends = {};
+  for (const b of BACKENDS) {
+    backends[b] = {
+      available: availableBackends.includes(b),
+      fidelity: BACKEND_FIDELITY[b],
+      reason: reasons[b],
+      install: getInstallCommand(b, runner, c)
+    };
+  }
+  const out = {
+    platform: process.platform,
+    platformKey: platformKey(runner, c),
+    gotenbergUrl: process.env.GOTENBERG_URL || null,
+    convertapiSecret: Boolean(process.env.CONVERTAPI_SECRET),
+    tools,
+    backends,
+    availableBackends
+  };
+  out.recommendation = computeRecommendation(out);
+  // Backwards compat: keep flat tool keys at the top level so existing
+  // --doctor consumers (and tests) don't break.
+  Object.assign(out, tools);
+  return out;
 }
 
-function getBackendReasons(runner = runCommand) {
-  const c = new Map();
+function getBackendReasons(runner = runCommand, cache = null) {
+  const c = cache || new Map();
   const reasons = {};
   reasons.libreoffice = (commandExists("soffice", runner, c) || commandExists("lowriter", runner, c))
     ? "available — high fidelity, local"
@@ -145,10 +240,15 @@ function selectBackend(preferred, available, options = {}) {
     if (strict && available.length) {
       throw new CliError(
         `No high-fidelity backend available. Available text-only fallback: ${available.join(", ")}. Install LibreOffice or set GOTENBERG_URL/CONVERTAPI_SECRET.`,
-        EXIT.MISSING_DEP
+        EXIT.MISSING_DEP,
+        "NO_BACKEND"
       );
     }
-    throw new CliError("No conversion backend available. Install LibreOffice, Pages, Word, or use textutil+cupsfilter.", EXIT.MISSING_DEP);
+    throw new CliError(
+      "No conversion backend available. Install LibreOffice, Pages, Word, or use textutil+cupsfilter.",
+      EXIT.MISSING_DEP,
+      "NO_BACKEND"
+    );
   }
   if (!BACKENDS.includes(preferred)) throw new CliError(`Unsupported backend '${preferred}'.`, EXIT.USAGE);
   if (!available.includes(preferred)) throw new CliError(`Requested backend '${preferred}' is not available.`, EXIT.MISSING_DEP);
@@ -529,4 +629,4 @@ Options:
 `;
 }
 
-module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts, fontFamilyMatches, expandIfGlob, expandInputs };
+module.exports = { BACKENDS, BACKEND_FIDELITY, EXIT, CliError, INSTALL_HINTS, parseArgs, resolvePaths, validatePaths, getAvailableBackends, getBackendDiagnostics, getBackendReasons, selectBackend, convertDocxToPdf, usageText, runCommand, commandExists, appScriptable, computeRecommendation, detectLinuxPackageManager, getInstallCommand, platformKey, convertWithPages, convertWithWord, convertWithTextutilCups, convertWithLibreOffice, convertWithGotenberg, convertWithConvertApi, listDocxFonts, listSystemFonts, checkFonts, fontFamilyMatches, expandIfGlob, expandInputs };

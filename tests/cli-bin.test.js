@@ -87,6 +87,29 @@ test("--doctor emits parseable JSON with expected schema", () => {
   assert.ok(r.status === 0 || r.status === EXIT.MISSING_DEP, `unexpected status ${r.status}`);
 });
 
+test("--doctor JSON includes platform, tools.docker, backends[*].install, and recommendation", () => {
+  const r = runCli(["--doctor"]);
+  const jsonEnd = r.stdout.lastIndexOf("}");
+  const parsed = JSON.parse(r.stdout.slice(0, jsonEnd + 1));
+  assert.ok(parsed.platform);
+  assert.ok(parsed.platformKey);
+  assert.ok(parsed.tools);
+  assert.ok("docker" in parsed.tools);
+  assert.ok(parsed.backends);
+  for (const b of ["libreoffice", "gotenberg", "convertapi"]) {
+    assert.ok(parsed.backends[b], `missing backends.${b}`);
+    assert.ok("available" in parsed.backends[b]);
+  }
+  // gotenberg always has an _all install command
+  assert.match(parsed.backends.gotenberg.install, /docker run/);
+  // recommendation may be null if a high-fidelity backend is locally available
+  if (parsed.recommendation !== null) {
+    assert.ok(parsed.recommendation.backend);
+    assert.ok(parsed.recommendation.command);
+    assert.ok(parsed.recommendation.rationale);
+  }
+});
+
 test("unknown flag exits with EXIT.USAGE and prints to stderr", () => {
   const r = runCli(["--nope", "in.docx"]);
   assert.equal(r.status, EXIT.USAGE);

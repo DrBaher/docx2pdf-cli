@@ -8,6 +8,7 @@ const {
   BACKENDS,
   CliError,
   EXIT,
+  INSTALL_HINTS,
   checkFonts,
   convertDocxToPdf,
   expandInputs,
@@ -294,6 +295,30 @@ function main(argv) {
   return 0;
 }
 
+function printSetupHelp() {
+  const d = getBackendDiagnostics();
+  const lines = [];
+  lines.push("");
+  if (d.recommendation) {
+    lines.push(`Recommended next step on ${d.platformKey}:`);
+    lines.push(`  ${d.recommendation.backend} — ${d.recommendation.rationale}`);
+    lines.push(`  Run: ${d.recommendation.command}`);
+    lines.push("");
+  }
+  lines.push("All install options:");
+  for (const b of BACKENDS) {
+    const info = d.backends[b];
+    if (info.available) continue;
+    if (!info.install) continue;
+    const tag = info.fidelity === "high" ? "" : " (text-only)";
+    lines.push(`  • ${b}${tag}: ${info.install}`);
+  }
+  lines.push("");
+  lines.push("After installing, re-run the same command. For full diagnostics");
+  lines.push("(JSON, agent-friendly): docx2pdf --doctor");
+  process.stderr.write(lines.join("\n") + "\n");
+}
+
 if (require.main === module) {
   Promise.resolve()
     .then(() => main(process.argv.slice(2)))
@@ -301,6 +326,7 @@ if (require.main === module) {
     .catch((error) => {
       if (error instanceof CliError) {
         process.stderr.write(`${error.message}\n`);
+        if (error.kind === "NO_BACKEND") printSetupHelp();
         process.exitCode = error.exitCode;
       } else {
         process.stderr.write(`${error.stack || String(error)}\n`);
