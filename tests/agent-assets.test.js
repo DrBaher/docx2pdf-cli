@@ -11,7 +11,6 @@ test("agent assets exist and example JSON is parseable", () => {
     "AGENTS.md",
     "llms.txt",
     "docs/AGENT_INTEGRATION.md",
-    "docs/PROMOTION.md",
     "examples/agent-defaults.json",
     "schemas/capabilities.schema.json",
     "schemas/agent-defaults.schema.json"
