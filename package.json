@@ -8,7 +8,13 @@
   },
   "files": [
     "src/",
+    "docs/",
+    "examples/",
+    "schemas/",
+    "AGENTS.md",
+    "llms.txt",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
@@ -28,8 +34,11 @@
   },
   "keywords": [
     "docx",
+    "docx2pdf",
     "pdf",
     "cli",
+    "ai-agent",
+    "automation",
     "libreoffice",
     "gotenberg",
     "convertapi",

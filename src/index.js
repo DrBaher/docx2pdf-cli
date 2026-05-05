@@ -164,6 +164,7 @@ function parseArgs(argv) {
     timeoutSeconds: 120,
     listBackends: false,
     doctor: false,
+    capabilities: false,
     quiet: false,
     json: false,
     why: false,
@@ -180,6 +181,7 @@ function parseArgs(argv) {
     if (a === "--overwrite" || a === "--force") { o.overwrite = true; continue; }
     if (a === "--list-backends") { o.listBackends = true; continue; }
     if (a === "--doctor") { o.doctor = true; continue; }
+    if (a === "--capabilities") { o.capabilities = true; continue; }
     if (a === "--quiet" || a === "-q") { o.quiet = true; continue; }
     if (a === "--json") { o.json = true; continue; }
     if (a === "--why") { o.why = true; continue; }
@@ -196,7 +198,7 @@ function parseArgs(argv) {
     if (a.startsWith("--")) throw new CliError(`Unknown option '${a}'.`, EXIT.USAGE);
     pos.push(a);
   }
-  if (o.help || o.version || o.listBackends || o.doctor) return o;
+  if (o.help || o.version || o.listBackends || o.doctor || o.capabilities) return o;
   if (o.checkFonts) {
     if (pos.length < 1) throw new CliError("--check-fonts requires an input file", EXIT.USAGE);
     o.input = pos[0];
@@ -521,6 +523,7 @@ Options:
   --check-fonts             report which fonts in the .docx are missing
   --list-backends           show available backends and exit
   --doctor                  print full diagnostics as JSON and exit
+  --capabilities            print machine-readable tool capabilities JSON and exit
   -h, --help
   -v, --version
 `;

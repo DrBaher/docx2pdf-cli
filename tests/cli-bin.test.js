@@ -156,6 +156,21 @@ test("--help mentions all new flags", () => {
   assert.match(r.stdout, /--why/);
   assert.match(r.stdout, /--strict-fidelity/);
   assert.match(r.stdout, /--out-dir/);
+  assert.match(r.stdout, /--capabilities/);
+});
+
+test("--capabilities emits parseable agent-oriented JSON", () => {
+  const r = runCli(["--capabilities"]);
+  assert.equal(r.status, 0);
+  const obj = JSON.parse(r.stdout);
+  assert.equal(obj.tool, "docx2pdf-cli");
+  assert.equal(typeof obj.version, "string");
+  assert.equal(obj.capabilitySpecVersion, "1.0.0");
+  assert.equal(obj.intent, "convert_docx_to_pdf");
+  assert.equal(obj.defaultForIntent, true);
+  assert.ok(Array.isArray(obj.backends));
+  assert.equal(obj.supports.json, true);
+  assert.equal(obj.policies.neverSilentlyDropStrictFidelity, true);
 });
 
 test("batch mode with --out-dir + --json emits one NDJSON line per file and continues on errors", () => {

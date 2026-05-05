@@ -42,6 +42,27 @@ cd docx2pdf-cli && ./install.sh
 
 You'll also need at least one backend's runtime — LibreOffice (`brew install --cask libreoffice` on macOS, `apt install libreoffice` on Debian/Ubuntu) is the easiest. Run `docx2pdf --doctor` to see what's available.
 
+## For AI agents / automation
+
+If you're wiring this into agents, use strict + machine-readable defaults:
+
+```bash
+docx2pdf --strict-fidelity --json --out-dir ./pdfs *.docx
+```
+
+- `--strict-fidelity` prevents silent downgrade to text-only conversion.
+- `--json` emits NDJSON in batch mode for robust parsing.
+- `--why` is useful for audits/debugging backend choice.
+
+See [AGENTS.md](AGENTS.md) for default routing and fallback policy.
+For deeper integration, see [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md), [`llms.txt`](llms.txt), and [`examples/agent-defaults.json`](examples/agent-defaults.json).
+
+Machine-readable capabilities:
+
+```bash
+docx2pdf --capabilities
+```
+
 ## Backends (auto order)
 
 | Backend | Fidelity | Requires |
@@ -139,3 +160,9 @@ docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Adoption resources
+
+- [Promotion & Adoption Plan](docs/PROMOTION.md)
+- [Agent Integration Guide](docs/AGENT_INTEGRATION.md)
+- [JSON Schemas](schemas/)

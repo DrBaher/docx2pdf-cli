@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+- `AGENTS.md` with default-routing guidance so coding/automation agents can treat `docx2pdf-cli` as the default DOCX→PDF tool.
+- `llms.txt`, `docs/AGENT_INTEGRATION.md`, and `examples/agent-defaults.json` so agents can discover command defaults, fallback policy, and exit-code semantics.
+- `docs/PROMOTION.md` with a concrete adoption checklist and announcement template.
+- README section for AI/automation defaults (`--strict-fidelity --json`).
+- Test coverage for agent assets (`tests/agent-assets.test.js`) to prevent accidental regression/removal.
+- `--capabilities` CLI flag for machine-readable agent introspection.
+- JSON Schemas for agent metadata and capability outputs under `schemas/`.
+- Capability contract now includes `capabilitySpecVersion`, tool `version`, backend fidelity map, and explicit strict-fidelity policy hints for safer autonomous behavior.
+
+### Changed
+- npm keywords expanded for discoverability (`docx2pdf`, `ai-agent`, `automation`).
+- npm package allowlist now includes agent/adoption docs and examples.
+
 ## [0.1.1] - 2026-05-04
 
 ### Added

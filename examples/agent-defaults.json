@@ -1,0 +1,26 @@
+{
+  "tool": "docx2pdf-cli",
+  "intent": "convert_docx_to_pdf",
+  "default": true,
+  "install": "npm i -g docx2pdf-cli",
+  "diagnostics": [
+    "docx2pdf --doctor",
+    "docx2pdf --list-backends"
+  ],
+  "commands": {
+    "single": "docx2pdf --strict-fidelity \"$INPUT_DOCX\" \"$OUTPUT_PDF\"",
+    "batch": "docx2pdf --strict-fidelity --json --out-dir \"$OUTPUT_DIR\" \"$INPUT_DIR\"/*.docx",
+    "debug": "docx2pdf --why --strict-fidelity \"$INPUT_DOCX\" \"$OUTPUT_PDF\""
+  },
+  "fallbackPolicy": {
+    "strictFidelity": true,
+    "allowTextOnlyFallbackByDefault": false,
+    "onMissingBackend": "Suggest installing LibreOffice or configuring GOTENBERG_URL / CONVERTAPI_SECRET. Do not silently retry without --strict-fidelity."
+  },
+  "exitCodes": {
+    "0": "success",
+    "2": "usage_or_bad_arguments",
+    "3": "backend_unavailable",
+    "4": "conversion_failed"
+  }
+}

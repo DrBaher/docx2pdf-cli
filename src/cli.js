@@ -118,6 +118,52 @@ function printWhy(options) {
   process.stderr.write("\n");
 }
 
+function getCapabilities() {
+  return {
+    capabilitySpecVersion: "1.0.0",
+    tool: "docx2pdf-cli",
+    version: pkg.version,
+    intent: "convert_docx_to_pdf",
+    defaultForIntent: true,
+    io: {
+      inputExtensions: [".docx"],
+      outputExtensions: [".pdf"]
+    },
+    modes: {
+      single: "docx2pdf --strict-fidelity <input.docx> <output.pdf>",
+      batch: "docx2pdf --strict-fidelity --json --out-dir <dir> <inputs...>"
+    },
+    supports: {
+      nonInteractive: true,
+      json: true,
+      ndjsonBatch: true,
+      strictFidelity: true,
+      backendExplain: true,
+      fontPreflight: true,
+      parallelBatch: true
+    },
+    backends: BACKENDS,
+    backendFidelity: {
+      libreoffice: "high",
+      gotenberg: "high",
+      convertapi: "high",
+      pages: "high",
+      word: "high",
+      "textutil-cups": "text-only"
+    },
+    policies: {
+      recommendedDefault: "docx2pdf --strict-fidelity --json --out-dir <dir> <inputs...>",
+      neverSilentlyDropStrictFidelity: true
+    },
+    exitCodes: {
+      0: "success",
+      2: "usage_or_bad_arguments",
+      3: "backend_unavailable",
+      4: "conversion_failed"
+    }
+  };
+}
+
 function main(argv) {
   const options = parseArgs(argv);
 
@@ -145,6 +191,11 @@ function main(argv) {
       process.stdout.write("Hint: install LibreOffice or enable macOS Automation permission for Pages/Word.\n");
       return EXIT.MISSING_DEP;
     }
+    return 0;
+  }
+
+  if (options.capabilities) {
+    process.stdout.write(`${JSON.stringify(getCapabilities(), null, 2)}\n`);
     return 0;
   }
 

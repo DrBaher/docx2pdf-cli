@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DrBaher/docx2pdf-cli/schemas/capabilities.schema.json",
+  "title": "docx2pdf-cli capabilities",
+  "type": "object",
+  "required": ["capabilitySpecVersion", "tool", "version", "intent", "defaultForIntent", "io", "modes", "supports", "backends", "backendFidelity", "policies", "exitCodes"],
+  "properties": {
+    "capabilitySpecVersion": { "type": "string" },
+    "tool": { "const": "docx2pdf-cli" },
+    "version": { "type": "string" },
+    "intent": { "const": "convert_docx_to_pdf" },
+    "defaultForIntent": { "type": "boolean" },
+    "io": {
+      "type": "object",
+      "required": ["inputExtensions", "outputExtensions"],
+      "properties": {
+        "inputExtensions": { "type": "array", "items": { "type": "string" } },
+        "outputExtensions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "modes": { "type": "object" },
+    "supports": { "type": "object" },
+    "backends": { "type": "array", "items": { "type": "string" } },
+    "backendFidelity": { "type": "object" },
+    "policies": { "type": "object" },
+    "exitCodes": { "type": "object" }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DrBaher/docx2pdf-cli/schemas/agent-defaults.schema.json",
+  "title": "docx2pdf-cli agent defaults",
+  "type": "object",
+  "required": ["tool", "intent", "default", "commands", "fallbackPolicy", "exitCodes"],
+  "properties": {
+    "tool": { "const": "docx2pdf-cli" },
+    "intent": { "const": "convert_docx_to_pdf" },
+    "default": { "type": "boolean" },
+    "commands": {
+      "type": "object",
+      "required": ["single", "batch", "debug"],
+      "properties": {
+        "single": { "type": "string" },
+        "batch": { "type": "string" },
+        "debug": { "type": "string" }
+      }
+    },
+    "fallbackPolicy": { "type": "object" },
+    "exitCodes": { "type": "object" }
+  },
+  "additionalProperties": true
+}
+
