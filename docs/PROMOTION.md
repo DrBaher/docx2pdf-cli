@@ -13,6 +13,8 @@ npm i -g docx2pdf-cli
 docx2pdf --doctor
 ```
 
+Prepared assets: [`docs/promotion/01-distribution-content.md`](promotion/01-distribution-content.md)
+
 ## 2) Positioning
 
 Lead with these differentiators:
@@ -40,12 +42,16 @@ docx2pdf --strict-fidelity --json --out-dir ./pdfs <inputs>
 - Maintain quick benchmark notes (single + batch throughput).
 - Share before/after examples where text-only fallback would have lost layout.
 
+Prepared kit: [`docs/promotion/04-proof-assets.md`](promotion/04-proof-assets.md)
+
 ## 5) Channels to announce
 
 - GitHub release notes
 - npm updates
 - OpenClaw Discord + ClawHub communities
 - X/LinkedIn short demo clips (30–60s)
+
+Prepared copy: [`docs/promotion/05-channel-launch-copy.md`](promotion/05-channel-launch-copy.md)
 
 ## 6) Suggested message template
 
@@ -58,4 +64,3 @@ docx2pdf --strict-fidelity --json --out-dir ./pdfs <inputs>
 > 
 > Install: `npm i -g docx2pdf-cli`
 > Repo: https://github.com/DrBaher/docx2pdf-cli
-
