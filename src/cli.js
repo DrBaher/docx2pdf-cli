@@ -87,7 +87,7 @@ async function runParallel(inputs, options, outDirAbs, willUseLOEngine) {
   for (const result of results) {
     if (result.ok) {
       if (options.json) {
-        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
+        process.stdout.write(`${JSON.stringify({ ...result, ok: true })}\n`);
       } else {
         process.stdout.write(`Converted ${path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
       }
