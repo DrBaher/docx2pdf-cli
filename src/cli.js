@@ -93,8 +93,7 @@ async function runParallel(inputs, options, outDirAbs, willUseLOEngine) {
       }
     } else {
       if (options.json) {
-        const { exitCode, ...rest } = result;
-        process.stdout.write(`${JSON.stringify(rest)}\n`);
+        process.stdout.write(`${JSON.stringify(result)}\n`);
       } else if (!options.quiet) {
         process.stderr.write(`Failed: ${result.input}: ${result.error}\n`);
       }
@@ -287,7 +286,7 @@ function main(argv) {
       if (!isBatch) throw err;
       failures.push({ input: inputPath, err });
       if (options.json) {
-        process.stdout.write(`${JSON.stringify({ ok: false, input: inputPath, error: err.message })}\n`);
+        process.stdout.write(`${JSON.stringify({ ok: false, input: inputPath, error: err.message, exitCode: err.exitCode || EXIT.CONVERT_FAIL })}\n`);
       } else if (!options.quiet) {
         process.stderr.write(`Failed: ${inputPath}: ${err.message}\n`);
       }

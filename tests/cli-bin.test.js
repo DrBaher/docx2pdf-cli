@@ -214,6 +214,7 @@ test("batch mode with --out-dir + --json emits one NDJSON line per file and cont
       assert.equal(obj.ok, false);
       assert.match(obj.input, new RegExp(`missing${idx + 1}\\.docx$`));
       assert.ok(obj.error && obj.error.length > 0);
+      assert.equal(typeof obj.exitCode, "number");
     }
     assert.equal(r.status, EXIT.USAGE, "exit code should be the first failure's exit code");
   } finally {
@@ -338,6 +339,7 @@ test("parallel batch with --concurrency emits one NDJSON line per input in input
     for (const p of parsed) {
       assert.equal(p.ok, false);
       assert.ok(p.error);
+      assert.equal(typeof p.exitCode, "number");
     }
     assert.notEqual(r.status, 0);
   } finally {
