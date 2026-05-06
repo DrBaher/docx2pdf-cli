@@ -419,3 +419,25 @@ test("single-file mode with --json emits one success-shape line if conversion su
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("single-file --json success includes outputBytes and durationMs", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-json-success-"));
+  try {
+    const fixture = path.join(__dirname, "fixtures", "sample.docx");
+    const out = path.join(tempDir, "sample.pdf");
+    const r = runCli(["--json", "--backend", "libreoffice", fixture, out]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    const lines = r.stdout.trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const obj = JSON.parse(lines[0]);
+    assert.equal(obj.ok, true);
+    assert.equal(obj.backend, "libreoffice");
+    assert.equal(obj.output, out);
+    assert.equal(typeof obj.outputBytes, "number");
+    assert.ok(obj.outputBytes > 0);
+    assert.equal(typeof obj.durationMs, "number");
+    assert.ok(obj.durationMs >= 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
