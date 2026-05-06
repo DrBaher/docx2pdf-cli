@@ -193,6 +193,7 @@ test("--capabilities emits parseable agent-oriented JSON", () => {
   assert.equal(obj.defaultForIntent, true);
   assert.ok(Array.isArray(obj.backends));
   assert.equal(obj.supports.json, true);
+  assert.equal(obj.supports.retries, true);
   assert.equal(obj.policies.neverSilentlyDropStrictFidelity, true);
 });
 

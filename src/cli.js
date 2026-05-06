@@ -141,6 +141,7 @@ function getCapabilities() {
       json: true,
       ndjsonBatch: true,
       strictFidelity: true,
+      retries: true,
       backendExplain: true,
       fontPreflight: true,
       parallelBatch: true

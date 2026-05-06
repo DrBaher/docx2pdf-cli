@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+- `--retries <n>` flag for network backends (`gotenberg`, `convertapi`) to retry transient failures in a controlled way.
+- JSON success telemetry now includes `outputBytes` and `durationMs` for easier automation, observability, and benchmarking.
+- Capability payload (`docx2pdf --capabilities`) now advertises retry support via `supports.retries`.
+
+### Changed
+- Retry backoff implementation now uses non-busy synchronous wait (`Atomics.wait`) to avoid CPU spin during retry delays.
+- Parallel JSON mode now preserves full child success telemetry fields instead of collapsing to a minimal shape.
+
 ## [0.2.1] - 2026-05-05
 
 ### Added
