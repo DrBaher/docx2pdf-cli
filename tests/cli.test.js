@@ -197,6 +197,12 @@ test("parseArgs accepts equals form for --backend and --timeout-seconds", () => 
   assert.equal(o.timeoutSeconds, 30);
 });
 
+test("parseArgs accepts --retries and validates non-negative integer", () => {
+  const o = parseArgs(["--retries", "2", "in.docx"]);
+  assert.equal(o.retries, 2);
+  assert.throws(() => parseArgs(["--retries", "-1", "in.docx"]), /non-negative integer/);
+});
+
 test("convertWithLibreOffice writes into tmpdir then moves into place", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-test-"));
   try {
@@ -349,6 +355,24 @@ test("convertWithGotenberg cleans up partial output on HTTP failure", () => {
     assert.equal(fs.existsSync(output), false, "partial output must be removed");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.GOTENBERG_URL;
+    else process.env.GOTENBERG_URL = previous;
+  }
+});
+
+test("convertWithGotenberg retries transient failures", () => {
+  const previous = process.env.GOTENBERG_URL;
+  process.env.GOTENBERG_URL = "http://127.0.0.1:3000";
+  const calls = [];
+  try {
+    const runner = (command, args) => {
+      calls.push([command, args]);
+      if (calls.length < 3) return { status: 22, stdout: "", stderr: "http fail" };
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    convertWithGotenberg("in.docx", "out.pdf", runner, 1000, 2);
+    assert.equal(calls.length, 3);
+  } finally {
     if (previous === undefined) delete process.env.GOTENBERG_URL;
     else process.env.GOTENBERG_URL = previous;
   }

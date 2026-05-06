@@ -454,10 +454,8 @@ function convertWithGotenberg(input, output, runner = runCommand, timeoutMs = 12
 
 function waitMs(ms) {
   if (ms <= 0) return;
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // intentional tiny busy wait; avoids async surface changes in sync conversion path
-  }
+  // Synchronous sleep without CPU busy-loop
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function convertWithConvertApi(input, output, runner = runCommand, timeoutMs = 120000, retries = 0) {
