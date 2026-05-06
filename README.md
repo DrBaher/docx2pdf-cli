@@ -100,6 +100,7 @@ docx2pdf --backend convertapi input.docx output.pdf
 docx2pdf --out-dir ./pdfs *.docx
 docx2pdf --json --out-dir ./pdfs *.docx | jq
 docx2pdf --concurrency 4 --out-dir ./pdfs *.docx     # parallel, safe with LibreOffice
+docx2pdf --retries 2 --backend gotenberg --out-dir ./pdfs *.docx   # retry transient network failures
 ```
 
 Globs are expanded by your shell on macOS/Linux. On Windows or with quoted patterns (`"*.docx"`), the CLI expands `*` and `?` against the directory itself.
@@ -107,7 +108,7 @@ Globs are expanded by your shell on macOS/Linux. On Windows or with quoted patte
 In batch mode, one bad file does not stop the rest. With `--json`, each file emits one NDJSON line:
 
 ```json
-{"ok":true,"backend":"libreoffice","input":"/abs/a.docx","output":"/abs/pdfs/a.pdf"}
+{"ok":true,"backend":"libreoffice","input":"/abs/a.docx","output":"/abs/pdfs/a.pdf","outputBytes":123456,"durationMs":842}
 {"ok":false,"input":"/abs/b.docx","error":"LibreOffice conversion failed: ..."}
 ```
 
@@ -136,6 +137,7 @@ docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 --strict-fidelity         in auto mode, refuse to fall back to text-only backend
 --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
 --concurrency <n>         run up to N conversions in parallel in batch mode (default: 1)
+--retries <n>             retry failed network backends n times (default: 0)
 --timeout-seconds <n>     conversion timeout (default: 120)
 --overwrite, --force      replace existing output file
 --quiet, -q               suppress success output (errors still print)

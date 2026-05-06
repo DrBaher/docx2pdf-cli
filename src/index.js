@@ -271,7 +271,8 @@ function parseArgs(argv) {
     strictFidelity: false,
     outDir: null,
     checkFonts: false,
-    concurrency: 1
+    concurrency: 1,
+    retries: 0
   };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -289,6 +290,8 @@ function parseArgs(argv) {
     if (a === "--check-fonts") { o.checkFonts = true; continue; }
     if (a.startsWith("--concurrency=")) { o.concurrency = Number(a.split("=",2)[1]); continue; }
     if (a === "--concurrency") { o.concurrency = Number(argv[++i]); if (!Number.isFinite(o.concurrency)) throw new CliError("Missing numeric value after --concurrency.", EXIT.USAGE); continue; }
+    if (a.startsWith("--retries=")) { o.retries = Number(a.split("=",2)[1]); continue; }
+    if (a === "--retries") { o.retries = Number(argv[++i]); if (!Number.isFinite(o.retries)) throw new CliError("Missing numeric value after --retries.", EXIT.USAGE); continue; }
     if (a.startsWith("--backend=")) { o.backend = a.split("=",2)[1]; continue; }
     if (a === "--backend") { o.backend = argv[++i]; if (!o.backend) throw new CliError("Missing value after --backend.", EXIT.USAGE); continue; }
     if (a.startsWith("--timeout-seconds=")) { o.timeoutSeconds = Number(a.split("=",2)[1]); continue; }
@@ -308,6 +311,7 @@ function parseArgs(argv) {
   if (pos.length < 1) throw new CliError("Usage: docx2pdf [options] <input.docx> [output.pdf]\n       docx2pdf [options] --out-dir <dir> <input.docx>...", EXIT.USAGE);
   if (!Number.isFinite(o.timeoutSeconds) || o.timeoutSeconds <= 0) throw new CliError("--timeout-seconds must be > 0", EXIT.USAGE);
   if (!Number.isInteger(o.concurrency) || o.concurrency < 1) throw new CliError("--concurrency must be a positive integer", EXIT.USAGE);
+  if (!Number.isInteger(o.retries) || o.retries < 0) throw new CliError("--retries must be a non-negative integer", EXIT.USAGE);
 
   if (o.outDir) {
     o.inputs = pos;
@@ -423,66 +427,88 @@ end tell`;
   runOsa(script, runner, timeoutMs, "Microsoft Word");
 }
 
-function convertWithGotenberg(input, output, runner = runCommand, timeoutMs = 120000) {
+function convertWithGotenberg(input, output, runner = runCommand, timeoutMs = 120000, retries = 0) {
   const base = process.env.GOTENBERG_URL;
   if (!base) throw new CliError("GOTENBERG_URL is required for gotenberg backend.", EXIT.MISSING_DEP);
 
   const endpoint = `${String(base).replace(/\/+$/, "")}/forms/libreoffice/convert`;
-  const r = runner("curl", [
-    "-sS",
-    "-fL",
-    "-X",
-    "POST",
-    endpoint,
-    "-F",
-    `files=@${input}`,
-    "-o",
-    output
-  ], { timeoutMs });
-
-  if (r.status !== 0) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+    const r = runner("curl", [
+      "-sS",
+      "-fL",
+      "-X",
+      "POST",
+      endpoint,
+      "-F",
+      `files=@${input}`,
+      "-o",
+      output
+    ], { timeoutMs });
+    if (r.status === 0) return;
+    lastErr = String(r.stderr || "").trim();
     try { fs.unlinkSync(output); } catch {}
-    throw new CliError(`Gotenberg conversion failed: ${String(r.stderr || "").trim()}`, EXIT.CONVERT_FAIL);
+  }
+  throw new CliError(`Gotenberg conversion failed after ${retries + 1} attempt(s): ${lastErr || "unknown error"}`, EXIT.CONVERT_FAIL);
+}
+
+function waitMs(ms) {
+  if (ms <= 0) return;
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // intentional tiny busy wait; avoids async surface changes in sync conversion path
   }
 }
 
-function convertWithConvertApi(input, output, runner = runCommand, timeoutMs = 120000) {
+function convertWithConvertApi(input, output, runner = runCommand, timeoutMs = 120000, retries = 0) {
   const secret = process.env.CONVERTAPI_SECRET;
   if (!secret) throw new CliError("CONVERTAPI_SECRET is required for convertapi backend.", EXIT.MISSING_DEP);
 
-  const post = runner("curl", [
-    "-sS",
-    "-f",
-    "-X",
-    "POST",
-    "https://v2.convertapi.com/convert/docx/to/pdf",
-    "-H",
-    `Authorization: Bearer ${secret}`,
-    "-F",
-    "StoreFile=true",
-    "-F",
-    `File=@${input}`
-  ], { timeoutMs });
+  let lastErr = null;
+  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+    const post = runner("curl", [
+      "-sS",
+      "-f",
+      "-X",
+      "POST",
+      "https://v2.convertapi.com/convert/docx/to/pdf",
+      "-H",
+      `Authorization: Bearer ${secret}`,
+      "-F",
+      "StoreFile=true",
+      "-F",
+      `File=@${input}`
+    ], { timeoutMs });
 
-  if (post.status !== 0) {
-    throw new CliError(`ConvertAPI request failed: ${String(post.stderr || "").trim()}`, EXIT.CONVERT_FAIL);
-  }
+    if (post.status !== 0) {
+      lastErr = `request failed: ${String(post.stderr || "").trim()}`;
+      if (attempt <= retries) waitMs(250 * attempt);
+      continue;
+    }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(String(post.stdout || ""));
-  } catch {
-    throw new CliError("ConvertAPI returned invalid JSON.", EXIT.CONVERT_FAIL);
-  }
+    let parsed;
+    try {
+      parsed = JSON.parse(String(post.stdout || ""));
+    } catch {
+      lastErr = "invalid JSON response";
+      if (attempt <= retries) waitMs(250 * attempt);
+      continue;
+    }
 
-  const fileUrl = parsed?.Files?.[0]?.Url;
-  if (!fileUrl) throw new CliError("ConvertAPI response missing output URL.", EXIT.CONVERT_FAIL);
+    const fileUrl = parsed?.Files?.[0]?.Url;
+    if (!fileUrl) {
+      lastErr = "response missing output URL";
+      if (attempt <= retries) waitMs(250 * attempt);
+      continue;
+    }
 
-  const dl = runner("curl", ["-sS", "-fL", fileUrl, "-o", output], { timeoutMs });
-  if (dl.status !== 0) {
+    const dl = runner("curl", ["-sS", "-fL", fileUrl, "-o", output], { timeoutMs });
+    if (dl.status === 0) return;
+    lastErr = `download failed: ${String(dl.stderr || "").trim()}`;
     try { fs.unlinkSync(output); } catch {}
-    throw new CliError(`Failed to download converted PDF: ${String(dl.stderr || "").trim()}`, EXIT.CONVERT_FAIL);
+    if (attempt <= retries) waitMs(250 * attempt);
   }
+  throw new CliError(`ConvertAPI conversion failed after ${retries + 1} attempt(s): ${lastErr || "unknown error"}`, EXIT.CONVERT_FAIL);
 }
 
 function convertWithTextutilCups(input, output, runner = runCommand, timeoutMs = 120000) {
@@ -588,14 +614,14 @@ function checkFonts(input, runner = runCommand) {
 }
 
 function convertDocxToPdf(options, runner = runCommand) {
-  const { input, output, backend = "auto", overwrite = false, timeoutSeconds = 120, strictFidelity = false } = options;
+  const { input, output, backend = "auto", overwrite = false, timeoutSeconds = 120, strictFidelity = false, retries = 0 } = options;
   const { input: i, output: o } = resolvePaths(input, output);
   validatePaths(i, o, overwrite);
   const selected = selectBackend(backend, getAvailableBackends(runner), { strict: strictFidelity });
   const timeoutMs = Math.floor(timeoutSeconds * 1000);
   if (selected === "libreoffice") convertWithLibreOffice(i, o, runner, timeoutMs);
-  else if (selected === "gotenberg") convertWithGotenberg(i, o, runner, timeoutMs);
-  else if (selected === "convertapi") convertWithConvertApi(i, o, runner, timeoutMs);
+  else if (selected === "gotenberg") convertWithGotenberg(i, o, runner, timeoutMs, retries);
+  else if (selected === "convertapi") convertWithConvertApi(i, o, runner, timeoutMs, retries);
   else if (selected === "pages") convertWithPages(i, o, runner, timeoutMs);
   else if (selected === "word") convertWithWord(i, o, runner, timeoutMs);
   else convertWithTextutilCups(i, o, runner, timeoutMs);
@@ -615,6 +641,7 @@ Options:
   --strict-fidelity         in auto mode, refuse to fall back to text-only backend
   --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
   --concurrency <n>         run up to N conversions in parallel in batch mode (default: 1)
+  --retries <n>             retry failed network backends n times (default: 0)
   --timeout-seconds <n>     conversion timeout (default: 120)
   --overwrite, --force      replace existing output file
   --quiet, -q               suppress success output (errors still print)

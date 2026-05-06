@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const pkg = require("../package.json");
@@ -26,6 +27,7 @@ function buildChildArgs(options, inputPath, outDirAbs) {
   if (options.strictFidelity) args.push("--strict-fidelity");
   if (options.overwrite) args.push("--overwrite");
   if (options.timeoutSeconds !== 120) args.push("--timeout-seconds", String(options.timeoutSeconds));
+  if (options.retries !== 0) args.push("--retries", String(options.retries));
   args.push(inputPath);
   return args;
 }
@@ -263,6 +265,7 @@ function main(argv) {
       ? path.join(outDirAbs, `${path.basename(inputPath, path.extname(inputPath))}.pdf`)
       : options.output;
     try {
+      const startedAt = Date.now();
       if (willUseLOEngine && !options.quiet) {
         const fc = checkFonts(inputPath);
         if (fc.available && fc.missing.length) {
@@ -272,8 +275,10 @@ function main(argv) {
         }
       }
       const result = convertDocxToPdf({ ...options, input: inputPath, output });
+      const outputBytes = fs.statSync(result.output).size;
+      const durationMs = Date.now() - startedAt;
       if (options.json) {
-        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output })}\n`);
+        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: result.input, output: result.output, outputBytes, durationMs })}\n`);
       } else if (!options.quiet) {
         process.stdout.write(`Converted ${path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
       }

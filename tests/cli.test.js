@@ -407,7 +407,7 @@ test("convertWithConvertApi errors on invalid JSON response", () => {
     const runner = () => ({ status: 0, stdout: "<html>not json</html>", stderr: "" });
     assert.throws(
       () => convertWithConvertApi("in.docx", "out.pdf", runner, 1000),
-      /ConvertAPI returned invalid JSON/
+      /invalid JSON/
     );
   } finally {
     if (previous === undefined) delete process.env.CONVERTAPI_SECRET;
