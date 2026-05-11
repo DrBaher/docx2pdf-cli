@@ -5,8 +5,11 @@
 [![CI](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Honest, batch-aware DOCX → PDF converter with hybrid backends.
+Honest, batch-aware DOCX → PDF converter with hybrid backends. Designed for the conversion step in an [agent-driven contract pipeline](https://drbaher-cli.vercel.app/) — strict-fidelity guarantees, machine-readable JSON output, and a `--doctor` probe so an agent can self-check what backends are usable before invoking.
 
+Part of a three-CLI suite: [nda-review-cli](https://github.com/DrBaher/nda-review-cli) (drafting, reviewing, negotiating) → **docx2pdf-cli** (this) → [sign-cli](https://github.com/DrBaher/sign-cli) (signing + audit trail). Each tool stands alone; together they cover end-to-end contract operations. See the [showcase site](https://drbaher-cli.vercel.app/) for the full workflow.
+
+- **Agent-discoverable** — `--doctor` reports which backends are usable on this machine, `--capabilities` emits machine-readable feature flags, `--json` mode produces structured per-file results an agent can parse without prose-scraping.
 - **Tells you which backend ran and why** — `--why` prints the full decision tree; no opaque "auto" mode that silently picks a low-fidelity fallback.
 - **Concurrency-safe LibreOffice** — each call gets its own `UserInstallation` profile dir, so parallel invocations don't deadlock on a shared profile.
 - **Batch mode with NDJSON** — convert globs of inputs into an output directory, with one structured line per file for CI piping.
@@ -44,15 +47,22 @@ You'll also need at least one backend's runtime — LibreOffice (`brew install -
 
 ## For AI agents / automation
 
-If you're wiring this into agents, use strict + machine-readable defaults:
+This CLI is the conversion step in an agent-driven contract pipeline (review → convert → sign), so the agent affordances are first-class, not bolted on:
+
+| Agent affordance      | Flag                         | What it gives you                                                |
+|-----------------------|------------------------------|------------------------------------------------------------------|
+| Capability discovery  | `--capabilities`             | Machine-readable list of available backends + features          |
+| Pre-flight probe      | `--doctor`                   | Detects which backends are usable on this machine, why          |
+| Strict fidelity       | `--strict-fidelity`          | Refuses silent downgrade to text-only conversion                |
+| Structured output     | `--json` (single) / NDJSON   | Per-file structured result; one line per file in batch mode     |
+| Decision transparency | `--why`                      | Prints the backend selection decision tree for audits           |
+| Honest failure        | non-zero exit codes          | Failures are loud; nothing gets quietly mangled                 |
+
+Recommended defaults when wiring into an agent:
 
 ```bash
 docx2pdf --strict-fidelity --json --out-dir ./pdfs *.docx
 ```
-
-- `--strict-fidelity` prevents silent downgrade to text-only conversion.
-- `--json` emits NDJSON in batch mode for robust parsing.
-- `--why` is useful for audits/debugging backend choice.
 
 See [AGENTS.md](AGENTS.md) for default routing and fallback policy.
 For deeper integration, see [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md), [`llms.txt`](llms.txt), and [`examples/agent-defaults.json`](examples/agent-defaults.json).
