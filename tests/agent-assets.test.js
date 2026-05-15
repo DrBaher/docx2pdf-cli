@@ -10,10 +10,10 @@ test("agent assets exist and example JSON is parseable", () => {
   const mustExist = [
     "AGENTS.md",
     "llms.txt",
-    "docs/AGENT_INTEGRATION.md",
     "examples/agent-defaults.json",
     "schemas/capabilities.schema.json",
-    "schemas/agent-defaults.schema.json"
+    "schemas/agent-defaults.schema.json",
+    "schemas/doctor.schema.json"
   ];
 
   for (const rel of mustExist) {

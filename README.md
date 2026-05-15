@@ -1,20 +1,148 @@
 # docx2pdf-cli
 
+> Part of the three-CLI contract suite. [**nda-review-cli**](https://github.com/DrBaher/nda-review-cli) (draft, review, negotiate) → **docx2pdf-cli** (DOCX → PDF) → [**sign-cli**](https://github.com/DrBaher/sign-cli) (signing + audit). [Showcase site](https://drbaher-cli.vercel.app/).
+
 [![npm version](https://img.shields.io/npm/v/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
 [![npm downloads](https://img.shields.io/npm/dw/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
 [![CI](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/DrBaher/docx2pdf-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Honest, batch-aware DOCX → PDF converter with hybrid backends. Designed for the conversion step in an [agent-driven contract pipeline](https://drbaher-cli.vercel.app/) — strict-fidelity guarantees, machine-readable JSON output, and a `--doctor` probe so an agent can self-check what backends are usable before invoking.
+Honest, batch-aware DOCX → PDF converter with hybrid backends. Strict-fidelity guarantees, machine-readable JSON output, and a `--doctor` probe so an agent can self-check what backends are usable before invoking. Six pluggable backends covering Linux, macOS, Windows, and Docker.
 
-Part of a three-CLI suite: [nda-review-cli](https://github.com/DrBaher/nda-review-cli) (drafting, reviewing, negotiating) → **docx2pdf-cli** (this) → [sign-cli](https://github.com/DrBaher/sign-cli) (signing + audit trail). Each tool stands alone; together they cover end-to-end contract operations. See the [showcase site](https://drbaher-cli.vercel.app/) for the full workflow.
+## Run this
 
-- **Agent-discoverable** — `--doctor` reports which backends are usable on this machine, `--capabilities` emits machine-readable feature flags, `--json` mode produces structured per-file results an agent can parse without prose-scraping.
-- **Tells you which backend ran and why** — `--why` prints the full decision tree; no opaque "auto" mode that silently picks a low-fidelity fallback.
-- **Concurrency-safe LibreOffice** — each call gets its own `UserInstallation` profile dir, so parallel invocations don't deadlock on a shared profile.
-- **Batch mode with NDJSON** — convert globs of inputs into an output directory, with one structured line per file for CI piping.
-- **Font preflight** — warns when fonts in the document aren't installed before LibreOffice/Gotenberg substitute them silently.
-- **Six pluggable backends**, with strict-fidelity guard against the text-only fallback.
+```bash
+docx2pdf --doctor
+```
+
+Tells you which backends are usable on this machine and prints a `recommendation` field — the single best next step (Docker-Gotenberg in ~30 seconds if Docker is available, otherwise LibreOffice). Once at least one backend is available:
+
+```bash
+docx2pdf contract.docx contract.pdf
+```
+
+## Where to go next
+
+| If you are… | Start here |
+|---|---|
+| **A new user** evaluating the tool | [Quick start](#quick-start) below, then [Diagnostics](#diagnostics) |
+| **An operator** setting up a backend | [docs/setup/](docs/setup/) — LibreOffice / Gotenberg / ConvertAPI / Pages / Word |
+| **An LLM agent** driving the CLI | [AGENTS.md](AGENTS.md) → [`docx2pdf --capabilities`](#capability-discovery) → [docs/reference/](docs/reference/) |
+| **A contributor** | [docs/reference/](docs/reference/) (concept docs), the npm package, the CI workflows |
+
+Concept deep-dives live in [docs/reference/](docs/reference/); per-backend setup in [docs/setup/](docs/setup/).
+
+## Install
+
+```bash
+npm i -g docx2pdf-cli
+docx2pdf --doctor
+```
+
+You'll also need at least one backend runtime. Easiest path: LibreOffice via `brew install --cask libreoffice` (macOS) or `apt install libreoffice` (Debian/Ubuntu). Or run Gotenberg in Docker for zero system mutation. The `--doctor` JSON's `recommendation` field picks the right one for your host.
+
+From a clone:
+
+```bash
+git clone https://github.com/DrBaher/docx2pdf-cli.git
+cd docx2pdf-cli && ./install.sh
+```
+
+## Quick start
+
+### Single file
+
+```bash
+docx2pdf contract.docx contract.pdf
+```
+
+### Batch mode (parallel, NDJSON output)
+
+```bash
+docx2pdf --concurrency 4 --json --out-dir ./pdfs ./drafts/*.docx
+```
+
+One bad file doesn't stop the rest. With `--json`, each file emits one NDJSON line plus a final summary. Exit code `0` only if every file succeeded.
+
+### Strict fidelity (refuse silent text-only fallback)
+
+```bash
+docx2pdf --strict-fidelity contract.docx contract.pdf
+```
+
+### Pin a specific backend
+
+```bash
+docx2pdf --backend gotenberg contract.docx contract.pdf
+docx2pdf --backend word contract.docx contract.pdf        # macOS only
+```
+
+### Network retries
+
+```bash
+docx2pdf --backend gotenberg --retries 3 contract.docx contract.pdf
+```
+
+Non-busy backoff via `Atomics.wait`. Advertised via `supports.retries` in `--capabilities`.
+
+### Font preflight
+
+```bash
+docx2pdf --check-fonts contract.docx
+```
+
+Warns when fonts referenced by the document aren't installed, so you find out before LibreOffice silently substitutes them.
+
+## Backends
+
+Six backends, auto-selected in this order:
+
+| Backend | Fidelity | Requires |
+|---|---|---|
+| `libreoffice` | high (local) | `soffice` or `lowriter` |
+| `gotenberg` | high (server) | `GOTENBERG_URL` + `curl` |
+| `convertapi` | high (cloud) | `CONVERTAPI_SECRET` + `curl` |
+| `pages` | high (macOS) | Apple Pages + Automation permission |
+| `word` | high (macOS) | Microsoft Word + Automation permission |
+| `textutil-cups` | text-only | `textutil` + `cupsfilter` |
+
+`--strict-fidelity` refuses the text-only fallback. Per-backend setup in [docs/setup/](docs/setup/); decision guidance in [docs/reference/backends.md](docs/reference/backends.md).
+
+## Diagnostics
+
+```bash
+docx2pdf --doctor                  # full host-readiness JSON; locked by schemas/doctor.schema.json
+docx2pdf --list-backends           # which backends are usable, in auto-selection order
+docx2pdf --capabilities            # machine-readable feature contract; locked by schemas/capabilities.schema.json
+docx2pdf --why input.docx          # print backend selection reasoning, then convert
+docx2pdf --check-fonts input.docx  # report missing fonts (needs unzip + fc-list)
+```
+
+`--check-fonts` requires `unzip` and `fc-list`. On macOS: `brew install fontconfig`.
+
+## For LLM agents
+
+Agent affordances are first-class. The full contract is in [AGENTS.md](AGENTS.md); the schemas are in [`schemas/`](schemas/).
+
+### Capability discovery
+
+```bash
+docx2pdf --capabilities
+```
+
+Returns a stable machine-readable contract (locked by [`schemas/capabilities.schema.json`](schemas/capabilities.schema.json)) — `capabilitySpecVersion`, tool version, backend fidelity map, supported flags, exit-code semantics, retry support. Validate against the schema rather than parsing prose.
+
+### Recommended defaults
+
+```bash
+docx2pdf --strict-fidelity --json --out-dir ./pdfs *.docx
+```
+
+Canonical defaults manifest: [`examples/agent-defaults.json`](examples/agent-defaults.json).
+
+### Fallback policy
+
+Don't silently remove `--strict-fidelity` after a backend error — that can produce a text-only PDF and lose layout. Run `--doctor`, read the `recommendation` field, surface its `command` to the user with consent, then retry. Full failure → recovery table in [AGENTS.md](AGENTS.md#failure--recovery).
 
 ## How it compares
 
@@ -30,132 +158,23 @@ Part of a three-CLI suite: [nda-review-cli](https://github.com/DrBaher/nda-revie
 
 Honest notes: `libreoffice-convert` is a leaner Node *library API* (we're a CLI). Gotenberg also handles HTML→PDF and scales as a server. `dxpdf` ships a custom renderer that avoids LibreOffice entirely (~100ms per doc) but is still feature-incomplete.
 
-## Install
-
-```bash
-npm i -g docx2pdf-cli
-```
-
-Or from a clone:
-
-```bash
-git clone https://github.com/DrBaher/docx2pdf-cli.git
-cd docx2pdf-cli && ./install.sh
-```
-
-You'll also need at least one backend's runtime — LibreOffice (`brew install --cask libreoffice` on macOS, `apt install libreoffice` on Debian/Ubuntu) is the easiest. Run `docx2pdf --doctor` to see what's available.
-
-## For AI agents / automation
-
-This CLI is the conversion step in an agent-driven contract pipeline (review → convert → sign), so the agent affordances are first-class, not bolted on:
-
-| Agent affordance      | Flag                         | What it gives you                                                |
-|-----------------------|------------------------------|------------------------------------------------------------------|
-| Capability discovery  | `--capabilities`             | Machine-readable list of available backends + features          |
-| Pre-flight probe      | `--doctor`                   | Detects which backends are usable on this machine, why          |
-| Strict fidelity       | `--strict-fidelity`          | Refuses silent downgrade to text-only conversion                |
-| Structured output     | `--json` (single) / NDJSON   | Per-file structured result; one line per file in batch mode     |
-| Decision transparency | `--why`                      | Prints the backend selection decision tree for audits           |
-| Honest failure        | non-zero exit codes          | Failures are loud; nothing gets quietly mangled                 |
-
-Recommended defaults when wiring into an agent:
-
-```bash
-docx2pdf --strict-fidelity --json --out-dir ./pdfs *.docx
-```
-
-See [AGENTS.md](AGENTS.md) for default routing and fallback policy.
-For deeper integration, see [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md), [`llms.txt`](llms.txt), and [`examples/agent-defaults.json`](examples/agent-defaults.json).
-
-Machine-readable capabilities:
-
-```bash
-docx2pdf --capabilities
-```
-
-## Backends (auto order)
-
-| Backend | Fidelity | Requires |
-|---|---|---|
-| `libreoffice` | high (local) | `soffice` or `lowriter` |
-| `gotenberg` | high (server) | `GOTENBERG_URL` + `curl` |
-| `convertapi` | high (cloud) | `CONVERTAPI_SECRET` + `curl` |
-| `pages` | high (macOS) | Apple Pages, Automation permission |
-| `word` | high (macOS) | Microsoft Word, Automation permission |
-| `textutil-cups` | text-only | `textutil` + `cupsfilter` (macOS) |
-
-`auto` selects the first available. Add `--strict-fidelity` to refuse the `textutil-cups` fallback when no high-fidelity backend is available.
-
-## Quick start
-
-### Local (LibreOffice)
-```bash
-docx2pdf input.docx output.pdf
-```
-
-### Self-hosted Gotenberg
-```bash
-export GOTENBERG_URL="http://127.0.0.1:3000"
-docx2pdf --backend gotenberg input.docx output.pdf
-```
-
-### Cloud ConvertAPI (optional)
-```bash
-export CONVERTAPI_SECRET="<your-secret>"
-docx2pdf --backend convertapi input.docx output.pdf
-```
-
-### Batch mode
-```bash
-docx2pdf --out-dir ./pdfs *.docx
-docx2pdf --json --out-dir ./pdfs *.docx | jq
-docx2pdf --concurrency 4 --out-dir ./pdfs *.docx     # parallel, safe with LibreOffice
-docx2pdf --retries 2 --backend gotenberg --out-dir ./pdfs *.docx   # retry transient network failures
-```
-
-Globs are expanded by your shell on macOS/Linux. On Windows or with quoted patterns (`"*.docx"`), the CLI expands `*` and `?` against the directory itself.
-
-In batch mode, one bad file does not stop the rest. With `--json`, each file emits one NDJSON line:
-
-```json
-{"ok":true,"backend":"libreoffice","input":"/abs/a.docx","output":"/abs/pdfs/a.pdf","outputBytes":123456,"durationMs":842}
-{"ok":false,"input":"/abs/b.docx","error":"LibreOffice conversion failed: ..."}
-```
-
-Exit code is `0` only if every file succeeded.
-
-## Diagnostics
-
-```bash
-docx2pdf --list-backends            # which backends are usable on this machine
-docx2pdf --doctor                   # full diagnostics as JSON
-docx2pdf --why input.docx           # print backend selection reasoning to stderr, then convert
-docx2pdf --check-fonts input.docx   # report which fonts in the document are missing
-```
-
-`--check-fonts` requires `unzip` and `fc-list` (install fontconfig on macOS via `brew install fontconfig`).
-
-## Run Gotenberg locally (Docker)
-```bash
-docker run --rm -p 3000:3000 gotenberg/gotenberg:8
-```
-
-## All options
+## All flags
 
 ```
 --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>
---strict-fidelity         in auto mode, refuse to fall back to text-only backend
+--strict-fidelity         refuse to fall back to text-only backend
 --out-dir <dir>           write outputs to <dir>/<basename>.pdf (enables batch mode)
 --concurrency <n>         run up to N conversions in parallel in batch mode (default: 1)
 --retries <n>             retry failed network backends n times (default: 0)
 --timeout-seconds <n>     conversion timeout (default: 120)
 --overwrite, --force      replace existing output file
---quiet, -q               suppress success output (errors still print)
+--quiet, -q               suppress success output
 --json                    emit machine-readable JSON (NDJSON in batch mode)
 --why                     print backend selection reasoning to stderr
 --check-fonts             report which fonts in the .docx are missing
 --list-backends           show available backends and exit
 --doctor                  print full diagnostics as JSON and exit
+--capabilities            print machine-readable feature contract and exit
 -h, --help
 -v, --version
 ```
@@ -164,16 +183,23 @@ docker run --rm -p 3000:3000 gotenberg/gotenberg:8
 
 | Code | Meaning |
 |---|---|
-| 0 | Success |
-| 2 | Usage / bad arguments |
-| 3 | Required backend or tool unavailable |
-| 4 | Conversion failed |
+| `0` | Success |
+| `2` | Invalid input (missing arg, bad flag) |
+| `3` | No acceptable backend available (`error.kind: "NO_BACKEND"`) |
+| `4` | Conversion failed |
+
+Full envelope and stable error `kind` table in [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-## Adoption resources
+## See also
 
-- [Agent Integration Guide](docs/AGENT_INTEGRATION.md)
-- [JSON Schemas](schemas/)
+- [AGENTS.md](AGENTS.md) — the agent quickstart (output contract, exit codes, discovery, failure recovery).
+- [docs/setup/](docs/setup/) — per-backend install + configuration.
+- [docs/reference/](docs/reference/) — backends, doctor JSON shape, exit codes, JSON/NDJSON output.
+- [llms.txt](llms.txt) — compressed agent briefing.
+- [schemas/](schemas/) — formal contracts for `--capabilities` and `--doctor` output.
+- [examples/agent-defaults.json](examples/agent-defaults.json) — recommended defaults manifest.
+- [CHANGELOG.md](CHANGELOG.md) — what landed and when.

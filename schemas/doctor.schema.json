@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DrBaher/docx2pdf-cli/schemas/doctor.schema.json",
+  "title": "docx2pdf-cli --doctor output",
+  "description": "Structured host-readiness report emitted by `docx2pdf --doctor --json` (and the default form when stdout is not a TTY). Agents should validate against this schema rather than parsing prose.",
+  "type": "object",
+  "required": ["platform", "tools", "availableBackends", "backends"],
+  "properties": {
+    "platform": {
+      "type": "string",
+      "description": "Node's process.platform value.",
+      "enum": ["darwin", "linux", "win32", "freebsd", "openbsd", "sunos", "aix"]
+    },
+    "platformKey": {
+      "type": "string",
+      "description": "Refined platform identifier used to pick per-backend install commands (e.g. linux-apt, linux-dnf, darwin).",
+      "examples": ["darwin", "linux-apt", "linux-dnf", "linux-pacman", "win32"]
+    },
+    "tools": {
+      "type": "object",
+      "description": "Booleans for each tool we probe. Top-level for backward compat; also reflected in backends[name].available reasoning.",
+      "additionalProperties": { "type": "boolean" },
+      "properties": {
+        "docker": { "type": "boolean" },
+        "soffice": { "type": "boolean" },
+        "lowriter": { "type": "boolean" },
+        "curl": { "type": "boolean" },
+        "unzip": { "type": "boolean" },
+        "fcList": { "type": "boolean" },
+        "textutil": { "type": "boolean" },
+        "cupsfilter": { "type": "boolean" }
+      }
+    },
+    "availableBackends": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Backend names that are usable on this host right now. Empty array means no conversion will succeed without setup."
+    },
+    "backends": {
+      "type": "object",
+      "description": "Per-backend report keyed by backend name.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["available", "fidelity"],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "True if this backend can run on this host right now."
+          },
+          "fidelity": {
+            "type": "string",
+            "description": "Output fidelity class.",
+            "enum": ["high", "text-only"]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable explanation of why the backend is or isn't available. Useful for surfacing to a user."
+          },
+          "install": {
+            "type": ["string", "null"],
+            "description": "Platform-specific install command for this backend. Null when the backend is OS-locked (e.g. pages on Linux)."
+          }
+        }
+      }
+    },
+    "recommendation": {
+      "type": ["object", "null"],
+      "description": "Single best next step for this host. Null when at least one backend is already available.",
+      "required": ["backend", "rationale", "command"],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "The backend name the recommendation refers to."
+        },
+        "rationale": {
+          "type": "string",
+          "description": "One-sentence explanation of why this is the best next step."
+        },
+        "command": {
+          "type": "string",
+          "description": "The exact shell command to run. May include sudo, brew, or docker run — agents should ask for consent before executing."
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
