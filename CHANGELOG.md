@@ -4,14 +4,26 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-15
+
 ### Added
+- **`--catalog json`** — machine-readable flag inventory. Same shape across the three-CLI suite (matching `sign --catalog json` and `nda-review-cli --catalog json`). Agents call this at startup rather than parsing `--help`. Stable across minor versions.
 - `--retries <n>` flag for network backends (`gotenberg`, `convertapi`) to retry transient failures in a controlled way.
 - JSON success telemetry now includes `outputBytes` and `durationMs` for easier automation, observability, and benchmarking.
 - Capability payload (`docx2pdf --capabilities`) now advertises retry support via `supports.retries`.
+- **AGENTS.md as the canonical agent entry point** — replaces the prior `docs/AGENT_INTEGRATION.md` (merged). Documents the output contract, exit-code map, discovery commands, recommended defaults, fallback policy, and a failure-mode → recovery table.
+- **`docs/setup/` per-backend pages** for libreoffice, gotenberg, convertapi, pages, and word.
+- **`docs/reference/`** — canonical homes for backends, doctor JSON shape, exit codes, and JSON/NDJSON output. Concept docs that previously lived inline in the README.
+- **`schemas/doctor.schema.json`** — formal JSON schema for the `--doctor` output (was previously documented only by example).
 
 ### Changed
 - Retry backoff implementation now uses non-busy synchronous wait (`Atomics.wait`) to avoid CPU spin during retry delays.
 - Parallel JSON mode now preserves full child success telemetry fields instead of collapsing to a minimal shape.
+- Test suite skips the `--json` success-telemetry test when LibreOffice is unavailable (same pattern as the existing smoke test). Fixes macOS CI runs.
+- README restructured around audience: "Run this" (`docx2pdf --doctor`) → "Where to go next" decision tree → human quickstart → backends overview → diagnostics → agent affordances. Human path now precedes the agent section.
+
+### Removed
+- `docs/AGENT_INTEGRATION.md` (merged into top-level `AGENTS.md` — 87-line duplication eliminated).
 
 ## [0.2.1] - 2026-05-05
 
@@ -74,7 +86,8 @@ Initial release. Honest, batch-aware DOCX → PDF CLI with hybrid backends.
 - **Six pluggable backends** — libreoffice, gotenberg, convertapi, pages, word, textutil-cups.
 - **Internal glob expansion** for cross-shell compatibility.
 
-[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/DrBaher/docx2pdf-cli/compare/v0.1.0...v0.1.1

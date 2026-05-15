@@ -265,6 +265,7 @@ function parseArgs(argv) {
     listBackends: false,
     doctor: false,
     capabilities: false,
+    catalog: null,
     quiet: false,
     json: false,
     why: false,
@@ -283,6 +284,8 @@ function parseArgs(argv) {
     if (a === "--list-backends") { o.listBackends = true; continue; }
     if (a === "--doctor") { o.doctor = true; continue; }
     if (a === "--capabilities") { o.capabilities = true; continue; }
+    if (a.startsWith("--catalog=")) { o.catalog = a.split("=", 2)[1]; continue; }
+    if (a === "--catalog") { o.catalog = argv[++i]; if (!o.catalog) throw new CliError("Missing value after --catalog.", EXIT.USAGE); continue; }
     if (a === "--quiet" || a === "-q") { o.quiet = true; continue; }
     if (a === "--json") { o.json = true; continue; }
     if (a === "--why") { o.why = true; continue; }
@@ -301,7 +304,7 @@ function parseArgs(argv) {
     if (a.startsWith("--")) throw new CliError(`Unknown option '${a}'.`, EXIT.USAGE);
     pos.push(a);
   }
-  if (o.help || o.version || o.listBackends || o.doctor || o.capabilities) return o;
+  if (o.help || o.version || o.listBackends || o.doctor || o.capabilities || o.catalog) return o;
   if (o.checkFonts) {
     if (pos.length < 1) throw new CliError("--check-fonts requires an input file", EXIT.USAGE);
     o.input = pos[0];
@@ -649,6 +652,7 @@ Options:
   --list-backends           show available backends and exit
   --doctor                  print full diagnostics as JSON and exit
   --capabilities            print machine-readable tool capabilities JSON and exit
+  --catalog json            print machine-readable flag inventory and exit
   -h, --help
   -v, --version
 `;

@@ -120,6 +120,54 @@ function printWhy(options) {
   process.stderr.write("\n");
 }
 
+function getCatalog() {
+  // Machine-readable flag inventory, parallel to sign-cli's `sign --catalog json`
+  // and nda-review-cli's `nda-review-cli --catalog json`. Each flag describes
+  // its long form, type, default, what it does, and (when applicable) the
+  // enumerated values it accepts. Agents call this at startup rather than
+  // parsing --help text.
+  return {
+    name: "docx2pdf-cli",
+    bin: "docx2pdf",
+    version: pkg.version,
+    description: "Honest, batch-aware DOCX → PDF converter with hybrid backends.",
+    usage: [
+      "docx2pdf [options] <input.docx> [output.pdf]",
+      "docx2pdf [options] --out-dir <dir> <input.docx>..."
+    ],
+    flags: [
+      { name: "--backend", type: "string", default: "auto", choices: ["auto", ...BACKENDS], help: "Backend to use. `auto` walks the order until one is available." },
+      { name: "--strict-fidelity", type: "boolean", default: false, help: "In auto mode, refuse to fall back to the text-only backend." },
+      { name: "--out-dir", type: "string", default: null, help: "Write outputs to <dir>/<basename>.pdf (enables batch mode)." },
+      { name: "--concurrency", type: "number", default: 1, help: "Run up to N conversions in parallel in batch mode." },
+      { name: "--retries", type: "number", default: 0, help: "Retry failed network backends (gotenberg/convertapi) N times with non-busy backoff." },
+      { name: "--timeout-seconds", type: "number", default: 120, help: "Conversion timeout per file (seconds)." },
+      { name: "--overwrite", aliases: ["--force"], type: "boolean", default: false, help: "Replace existing output file." },
+      { name: "--quiet", aliases: ["-q"], type: "boolean", default: false, help: "Suppress success output (errors still print)." },
+      { name: "--json", type: "boolean", default: false, help: "Emit machine-readable JSON. NDJSON in batch mode; per-file telemetry includes outputBytes + durationMs on success and exitCode on failure." },
+      { name: "--why", type: "boolean", default: false, help: "Print backend-selection reasoning to stderr before converting." },
+      { name: "--check-fonts", type: "boolean", default: false, help: "Report missing fonts referenced by the document. Requires unzip + fc-list." },
+      { name: "--list-backends", type: "boolean", default: false, help: "Print available backends and exit." },
+      { name: "--doctor", type: "boolean", default: false, help: "Print structured host-readiness JSON and exit. Schema: schemas/doctor.schema.json." },
+      { name: "--capabilities", type: "boolean", default: false, help: "Print machine-readable capability contract and exit. Schema: schemas/capabilities.schema.json." },
+      { name: "--catalog", type: "string", choices: ["json"], default: null, help: "Print this catalog and exit. Stable across minor versions — agents call at startup." },
+      { name: "--help", aliases: ["-h"], type: "boolean", default: false, help: "Show usage and exit." },
+      { name: "--version", aliases: ["-v"], type: "boolean", default: false, help: "Print package version and exit." }
+    ],
+    exitCodes: {
+      "0": "success",
+      "2": "usage_or_bad_arguments",
+      "3": "backend_unavailable (error.kind: NO_BACKEND)",
+      "4": "conversion_failed"
+    },
+    discovery: {
+      capabilities: "docx2pdf --capabilities",
+      doctor: "docx2pdf --doctor",
+      catalog: "docx2pdf --catalog json"
+    }
+  };
+}
+
 function getCapabilities() {
   return {
     capabilitySpecVersion: "1.0.0",
@@ -199,6 +247,15 @@ function main(argv) {
 
   if (options.capabilities) {
     process.stdout.write(`${JSON.stringify(getCapabilities(), null, 2)}\n`);
+    return 0;
+  }
+
+  if (options.catalog) {
+    if (options.catalog !== "json") {
+      process.stderr.write(`Unknown --catalog format '${options.catalog}'. Supported: json\n`);
+      return EXIT.USAGE;
+    }
+    process.stdout.write(`${JSON.stringify(getCatalog(), null, 2)}\n`);
     return 0;
   }
 
