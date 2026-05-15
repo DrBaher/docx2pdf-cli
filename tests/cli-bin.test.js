@@ -423,12 +423,16 @@ test("single-file mode with --json emits one success-shape line if conversion su
   }
 });
 
-test("single-file --json success includes outputBytes and durationMs", () => {
+test("single-file --json success includes outputBytes and durationMs", (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-cli-json-success-"));
   try {
     const fixture = path.join(__dirname, "fixtures", "sample.docx");
     const out = path.join(tempDir, "sample.pdf");
     const r = runCli(["--json", "--backend", "libreoffice", fixture, out]);
+    if (r.status === EXIT.MISSING_DEP) {
+      t.skip("LibreOffice not installed; CI installs it on Ubuntu");
+      return;
+    }
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     const lines = r.stdout.trim().split("\n").filter(Boolean);
     assert.equal(lines.length, 1);
