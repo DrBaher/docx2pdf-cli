@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.svg" width="120" alt="docx2pdf-cli">
+</p>
+
 # docx2pdf-cli
 
 > Part of the three-CLI contract suite. [**nda-review-cli**](https://github.com/DrBaher/nda-review-cli) (draft, review, negotiate) → **docx2pdf-cli** (DOCX → PDF) → [**sign-cli**](https://github.com/DrBaher/sign-cli) (signing + audit). [Showcase site](https://cli.drbaher.com/).
