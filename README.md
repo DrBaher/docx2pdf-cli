@@ -4,7 +4,7 @@
 
 # docx2pdf-cli
 
-> Part of the contract-operations CLI suite. [**draft-cli**](https://github.com/DrBaher/draft-cli) (fill placeholders) → [**nda-review-cli**](https://github.com/DrBaher/nda-review-cli) (review, redline, negotiate) → **docx2pdf-cli** (DOCX → PDF) → [**sign-cli**](https://github.com/DrBaher/sign-cli) (signing + audit). Storage layer: [**template-vault-cli**](https://github.com/DrBaher/template-vault-cli). Drift detection: [**compare-cli**](https://github.com/DrBaher/compare-cli). [Showcase site](https://cli.drbaher.com/).
+> Part of the contract-ops CLI suite. [**draft-cli**](https://github.com/DrBaher/draft-cli) (fill placeholders) → [**nda-review-cli**](https://github.com/DrBaher/nda-review-cli) (review, redline, negotiate) → **docx2pdf-cli** (DOCX → PDF) → [**sign-cli**](https://github.com/DrBaher/sign-cli) (signing + audit). Storage layer: [**template-vault-cli**](https://github.com/DrBaher/template-vault-cli). Drift detection: [**compare-cli**](https://github.com/DrBaher/compare-cli). [Showcase site](https://cli.drbaher.com/).
 
 [![npm version](https://img.shields.io/npm/v/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
 [![npm downloads](https://img.shields.io/npm/dw/docx2pdf-cli.svg)](https://www.npmjs.com/package/docx2pdf-cli)
