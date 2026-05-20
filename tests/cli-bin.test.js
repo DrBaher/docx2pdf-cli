@@ -448,3 +448,15 @@ test("single-file --json success includes outputBytes and durationMs", (t) => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("demo: zero-config command runs the bundled sample", () => {
+  const r = runCli(["demo"]);
+  assert.match(r.stderr, /docx2pdf demo/, `expected demo intro on stderr, got: ${r.stderr}`);
+  if (r.status === EXIT.MISSING_DEP) {
+    // No backend installed: the demo explains what to install instead.
+    assert.match(r.stderr, /No PDF backend is installed/);
+    return;
+  }
+  assert.equal(r.status, 0, `demo failed: ${r.stderr}`);
+  assert.match(r.stdout, /Converted the sample DOCX to PDF/);
+});

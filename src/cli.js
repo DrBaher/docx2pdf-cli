@@ -216,6 +216,8 @@ function getCapabilities() {
 }
 
 function main(argv) {
+  if (argv[0] === "demo") return runDemo();
+
   const options = parseArgs(argv);
 
   if (options.help) {
@@ -379,6 +381,40 @@ function printSetupHelp() {
   lines.push("After installing, re-run the same command. For full diagnostics");
   lines.push("(JSON, agent-friendly): docx2pdf --doctor");
   process.stderr.write(lines.join("\n") + "\n");
+}
+
+// Zero-config first run: convert a bundled sample DOCX to PDF using whatever
+// backend is installed. If none is, explain what to install (the conversion
+// itself is backend-dependent, so the demo is best-effort by design).
+function runDemo() {
+  const os = require("node:os");
+  const sampleSrc = path.join(__dirname, "demo-sample.docx");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-demo-"));
+  const input = path.join(tmpDir, "sample.docx");
+  fs.copyFileSync(sampleSrc, input);
+
+  process.stderr.write("docx2pdf demo — converting a bundled sample DOCX to PDF.\n");
+
+  if (!getAvailableBackends().length) {
+    process.stderr.write("\nNo PDF backend is installed yet, so the demo can't render the sample.\n");
+    printSetupHelp();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    return EXIT.MISSING_DEP;
+  }
+
+  const output = path.join(tmpDir, "sample.pdf");
+  try {
+    const result = convertDocxToPdf({ input, output, backend: "auto", overwrite: true });
+    const bytes = fs.statSync(result.output).size;
+    process.stdout.write(`\n✓ Converted the sample DOCX to PDF (${bytes} bytes) via the '${result.backend}' backend.\n`);
+    process.stdout.write(`  ${result.output}\n`);
+    process.stdout.write("\nNow try your own file:\n  docx2pdf your.docx out.pdf\n  docx2pdf --doctor            # see all detected backends\n");
+    return 0;
+  } catch (err) {
+    process.stderr.write(`\nDemo conversion failed: ${err.message}\n`);
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    return err.exitCode || EXIT.CONVERT_FAIL;
+  }
 }
 
 if (require.main === module) {
