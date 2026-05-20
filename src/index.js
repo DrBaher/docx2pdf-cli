@@ -637,6 +637,8 @@ Usage:
   docx2pdf [options] <input.docx> [output.pdf]
   docx2pdf [options] --out-dir <dir> <input.docx>...
   docx2pdf demo                            zero-config: convert a bundled sample
+  cat in.docx | docx2pdf - out.pdf         read DOCX from stdin
+  docx2pdf in.docx - > out.pdf             write PDF to stdout ('-')
 
 Options:
   --backend <auto|libreoffice|gotenberg|convertapi|pages|word|textutil-cups>

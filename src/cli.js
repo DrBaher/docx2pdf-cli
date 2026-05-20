@@ -300,6 +300,19 @@ function main(argv) {
     return 0;
   }
 
+  // Pipe mode: `-` as input reads a DOCX from stdin; `-` as output (or a bare
+  // `docx2pdf -`) streams the PDF to stdout. Single-file only.
+  const inputIsStdin = options.input === "-";
+  const outputIsStdout = options.output === "-" || (inputIsStdin && !options.output);
+  if (!options.outDir && (inputIsStdin || outputIsStdout)) {
+    if ((options.inputs || []).length > 1) {
+      process.stderr.write("stdin '-' supports a single input only.\n");
+      return EXIT.USAGE;
+    }
+    if (options.why) printWhy(options);
+    return runPipe(options, inputIsStdin, outputIsStdout);
+  }
+
   if (options.why) printWhy(options);
 
   let plannedBackend = null;
@@ -414,6 +427,49 @@ function runDemo() {
     process.stderr.write(`\nDemo conversion failed: ${err.message}\n`);
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
     return err.exitCode || EXIT.CONVERT_FAIL;
+  }
+}
+
+// Single-file conversion with stdin and/or stdout. Backends need a real file
+// on disk, so stdin is buffered to a temp .docx and stdout output is rendered
+// to a temp .pdf then streamed out. Temp files are always cleaned up.
+function runPipe(options, inputIsStdin, outputIsStdout) {
+  const os = require("node:os");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-pipe-"));
+  try {
+    let input = options.input;
+    if (inputIsStdin) {
+      const buf = fs.readFileSync(0); // fd 0 = stdin, read synchronously
+      if (!buf.length) {
+        process.stderr.write("No data on stdin (expected a .docx stream for '-').\n");
+        return EXIT.USAGE;
+      }
+      input = path.join(tmpDir, "input.docx");
+      fs.writeFileSync(input, buf);
+    }
+    const output = outputIsStdout ? path.join(tmpDir, "output.pdf") : path.resolve(options.output);
+    const result = convertDocxToPdf({
+      ...options,
+      input,
+      output,
+      overwrite: outputIsStdout ? true : options.overwrite
+    });
+    if (outputIsStdout) {
+      process.stdout.write(fs.readFileSync(result.output));
+      if (!options.quiet) {
+        process.stderr.write(`Converted ${inputIsStdin ? "(stdin)" : path.basename(result.input)} -> stdout using ${result.backend}\n`);
+      }
+    } else {
+      const bytes = fs.statSync(result.output).size;
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, backend: result.backend, input: inputIsStdin ? "-" : result.input, output: result.output, outputBytes: bytes })}\n`);
+      } else if (!options.quiet) {
+        process.stdout.write(`Converted ${inputIsStdin ? "(stdin)" : path.basename(result.input)} -> ${result.output} using ${result.backend}\n`);
+      }
+    }
+    return 0;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
   }
 }
 

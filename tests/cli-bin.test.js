@@ -460,3 +460,26 @@ test("demo: zero-config command runs the bundled sample", () => {
   assert.equal(r.status, 0, `demo failed: ${r.stderr}`);
   assert.match(r.stdout, /Converted the sample DOCX to PDF/);
 });
+
+test("pipe: reads DOCX from stdin ('-') and writes to a file", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-stdin-"));
+  try {
+    const fixture = fs.readFileSync(path.join(__dirname, "fixtures", "sample.docx"));
+    const out = path.join(tempDir, "out.pdf");
+    const r = spawnSync(process.execPath, [CLI, "-", out], { input: fixture, encoding: "utf8" });
+    if (r.status === EXIT.MISSING_DEP) return; // no backend on this host
+    assert.equal(r.status, 0, `stdin convert failed: ${r.stderr}`);
+    assert.equal(fs.existsSync(out), true);
+    assert.equal(fs.readFileSync(out).slice(0, 5).toString("utf8"), "%PDF-");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("pipe: writes PDF to stdout ('-')", () => {
+  const fixture = path.join(__dirname, "fixtures", "sample.docx");
+  const r = spawnSync(process.execPath, [CLI, fixture, "-"], { encoding: "buffer" });
+  if (r.status === EXIT.MISSING_DEP) return; // no backend on this host
+  assert.equal(r.status, 0, `stdout convert failed: ${r.stderr && r.stderr.toString()}`);
+  assert.equal(r.stdout.slice(0, 5).toString("utf8"), "%PDF-");
+});
