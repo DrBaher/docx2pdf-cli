@@ -21,7 +21,7 @@ docker run -d --name gotenberg --restart unless-stopped \
   -p 3000:3000 gotenberg/gotenberg:8
 ```
 
-Then point every client at the shared URL via env or a per-call `--backend-config gotenbergUrl=https://gotenberg.internal`.
+Then point every client at the shared URL by setting `GOTENBERG_URL=https://gotenberg.internal` in each client's environment.
 
 ## Retries
 

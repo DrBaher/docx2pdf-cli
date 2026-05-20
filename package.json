@@ -1,7 +1,7 @@
 {
   "name": "docx2pdf-cli",
   "version": "0.2.2",
-  "description": "Honest, batch-aware DOCX to PDF CLI with hybrid backends (LibreOffice, Gotenberg, ConvertAPI, Pages, Word, textutil).",
+  "description": "Honest, batch-aware DOCX to PDF CLI with hybrid backends (LibreOffice, Gotenberg, ConvertAPI, Pages, Word, textutil). Part of the contract-ops CLI suite.",
   "type": "commonjs",
   "bin": {
     "docx2pdf": "src/cli.js"
@@ -27,7 +27,7 @@
   "bugs": {
     "url": "https://github.com/DrBaher/docx2pdf-cli/issues"
   },
-  "homepage": "https://github.com/DrBaher/docx2pdf-cli#readme",
+  "homepage": "https://cli.drbaher.com",
   "author": "Baher Al Hakim",
   "scripts": {
     "test": "node --test tests/*.test.js"
@@ -37,6 +37,9 @@
     "docx2pdf",
     "pdf",
     "cli",
+    "contract-ops",
+    "agent-first",
+    "legal-tech",
     "ai-agent",
     "automation",
     "libreoffice",

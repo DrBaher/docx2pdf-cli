@@ -59,7 +59,6 @@ Errors print to **stderr**, exit non-zero:
 | `NO_BACKEND` | infra | Exit `3`. No backend can convert. `details.recommendation` names the next install step. |
 | `BACKEND_TIMEOUT` | runtime | Exit `4`. Backend hung past the per-invocation timeout. |
 | `BACKEND_FAILED` | runtime | Exit `4`. Backend ran but produced no PDF or exited non-zero. `details.stderr` carries the backend's own output. |
-| `FONT_MISSING` | runtime | Exit `4` (only when `--check-fonts --strict` is passed). The document references a font not on the host. |
 
 ## Disabling the JSON envelope
 
