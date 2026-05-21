@@ -35,30 +35,23 @@ Errors print to **stderr**, exit non-zero:
 ```json
 {
   "ok": false,
-  "error": {
-    "code": "NO_BACKEND",
-    "kind": "NO_BACKEND",
-    "message": "No conversion backend is available on this host.",
-    "exitCode": 3,
-    "details": {
-      "platform": "darwin",
-      "recommendation": { ... }
-    }
-  }
+  "input": "contract.docx",
+  "error": "No conversion backend is available on this host.",
+  "exitCode": 3
 }
 ```
 
-`kind` is the stable class — agents should branch on this, not on the human-readable `message`.
+The JSON failure object is **flat**: `error` is a human-readable string and `exitCode` is the stable class. Branch on the exit code (or the `exitCode` field), not on the message.
 
-## Stable error `kind`s
+## Error causes by exit code
 
-| Kind | Class | Notes |
+| Cause | Exit | Notes |
 |---|---|---|
-| `INVALID_INPUT` | input | Exit `2`. Missing arg, bad flag, file not found. |
-| `STRICT_FIDELITY_REFUSED` | input | Exit `2`. Asked for `--strict-fidelity` but the resolved backend is `textutil-cups`. |
-| `NO_BACKEND` | infra | Exit `3`. No backend can convert. `details.recommendation` names the next install step. |
-| `BACKEND_TIMEOUT` | runtime | Exit `4`. Backend hung past the per-invocation timeout. |
-| `BACKEND_FAILED` | runtime | Exit `4`. Backend ran but produced no PDF or exited non-zero. `details.stderr` carries the backend's own output. |
+| Invalid input | `2` | Missing arg, bad flag, or file not found. |
+| Strict-fidelity refused | `2` | `--strict-fidelity` set but the only resolved backend is `textutil-cups`. |
+| No backend | `3` | No backend can convert; run `docx2pdf --doctor` for the next install step. |
+| Backend timeout | `4` | Backend hung past the per-invocation timeout. |
+| Backend failed | `4` | Backend ran but produced no PDF or exited non-zero. |
 
 ## Disabling the JSON envelope
 

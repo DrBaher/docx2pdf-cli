@@ -5,7 +5,7 @@ Drive `docx2pdf-cli` from an LLM agent or non-interactive client. Same three-fil
 ## Output contract
 
 - **Success**: `{ ok: true, ... }` to **stdout** (one JSON object per file; NDJSON in batch mode), exit `0`.
-- **Failure**: `{ ok: false, error: { code, message, kind?, details? } }` to **stderr**, non-zero exit. `kind` lets you branch on error class (e.g. `"NO_BACKEND"`).
+- **Failure**: `{ ok: false, input, error: "<message>", exitCode }` (flat — `error` is a string), non-zero exit. Branch on `exitCode` / the process exit (`2` usage · `3` no backend · `4` conversion failed), not on the human-readable message.
 - Default output is plain text. Add `--json` for the structured envelope.
 
 Success telemetry includes `backend`, `input`, `output`, `outputBytes`, `durationMs`. Failure includes `exitCode` so a batch parser can branch per row.

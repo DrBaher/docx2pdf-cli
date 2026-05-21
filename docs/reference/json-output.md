@@ -21,7 +21,7 @@ Writes one JSON object to stdout on success:
 }
 ```
 
-On failure, the error envelope (see [exit-codes.md](exit-codes.md)) goes to stderr instead. Exit code carries the class.
+On failure, a flat error object is emitted instead — `{ "ok": false, "input": "...", "error": "<message>", "exitCode": N }` (`error` is a human-readable string). Branch on the exit code (see [exit-codes.md](exit-codes.md)), which carries the class.
 
 ## Batch (NDJSON) mode
 
@@ -34,7 +34,7 @@ Writes one JSON object per line to stdout, plus a final summary line:
 ```jsonl
 {"ok": true, "backend": "libreoffice", "input": "/abs/contract-a.docx", "output": "/abs/pdfs/contract-a.pdf", "outputBytes": 12345, "durationMs": 287}
 {"ok": true, "backend": "libreoffice", "input": "/abs/contract-b.docx", "output": "/abs/pdfs/contract-b.pdf", "outputBytes": 18900, "durationMs": 312}
-{"ok": false, "input": "/abs/broken.docx", "error": {"code": "BACKEND_FAILED", "kind": "BACKEND_FAILED", "exitCode": 4, "message": "LibreOffice exited 1", "details": {"stderr": "..."}}}
+{"ok": false, "input": "/abs/broken.docx", "error": "LibreOffice exited 1", "exitCode": 4}
 {"ok": true, "summary": {"total": 3, "succeeded": 2, "failed": 1, "durationMs": 920}}
 ```
 
