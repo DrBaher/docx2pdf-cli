@@ -33,6 +33,7 @@ docx2pdf contract.docx contract.pdf
 | **An operator** setting up a backend | [docs/setup/](docs/setup/) — LibreOffice / Gotenberg / ConvertAPI / Pages / Word |
 | **An LLM agent** driving the CLI | [AGENTS.md](AGENTS.md) → [`docx2pdf --capabilities`](#capability-discovery) → [docs/reference/](docs/reference/) |
 | **A contributor** | [docs/reference/](docs/reference/) (concept docs), the npm package, the CI workflows |
+| **Adding a new CLI to the suite** | The [build-a-CLI playbook](https://cli.drbaher.com/build-a-cli) — the conventions every suite CLI follows |
 
 Concept deep-dives live in [docs/reference/](docs/reference/); per-backend setup in [docs/setup/](docs/setup/).
 
