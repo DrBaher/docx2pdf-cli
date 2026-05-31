@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-31
+
+### Fixed
+- **Unwritable / missing output directory no longer dumps a raw Node stack trace.** Write-path `fs.*` calls are now wrapped so an `ENOENT`/`EACCES`/`EEXIST` becomes a clean `CliError` with a documented non-zero exit code instead of a traceback + exit 1:
+  - `validatePaths` now rejects an output whose parent is a regular file (`Output directory is not a directory`) and converts a failed `mkdir` into `Cannot create output directory <dir>: <code>` (exit 2, `USAGE`).
+  - The LibreOffice backend's final `rename`/`copy` into the destination and the textutil-cups `writeFileSync` calls now raise `Cannot write output <path>: <code>` (exit 4, `CONVERT_FAIL`).
+- **`--out-dir <regular-file>`** now reports a clear "not a directory" error instead of a raw `EEXIST: mkdir` trace.
+- **PDF-to-stdout (`-`) no longer truncates large output** on a slow pipe: the buffer is now written synchronously to fd 1 and fully drained before exit.
+
 ## [0.2.2] - 2026-05-15
 
 ### Added

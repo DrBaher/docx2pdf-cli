@@ -483,3 +483,83 @@ test("pipe: writes PDF to stdout ('-')", () => {
   assert.equal(r.status, 0, `stdout convert failed: ${r.stderr && r.stderr.toString()}`);
   assert.equal(r.stdout.slice(0, 5).toString("utf8"), "%PDF-");
 });
+
+// Regression: a non-writable/non-existent output directory must produce a clean
+// CliError (message + EXIT.USAGE), never a raw Node stack trace + exit 1.
+test("error: output under a non-existent root is a clean CliError, no stack trace", () => {
+  const fixture = path.join(__dirname, "fixtures", "sample.docx");
+  // A path whose parent cannot be created (root-owned, non-writable on POSIX).
+  const out = "/no-such-root-docx2pdf/sub/out.pdf";
+  const r = runCli([fixture, out]);
+  assert.equal(r.status, EXIT.USAGE, `expected EXIT.USAGE, got ${r.status}: ${r.stderr}`);
+  assert.match(r.stderr, /Cannot create output directory/);
+  assert.doesNotMatch(r.stderr, /\bat .*\(.*:\d+:\d+\)/, `stderr leaked a stack trace: ${r.stderr}`);
+  assert.doesNotMatch(r.stderr, /Error: ENOENT|Error: EACCES|Error: EEXIST/);
+});
+
+test("error: output dir that is a regular file is a clean CliError, no stack trace", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-outfile-"));
+  try {
+    const fixture = path.join(__dirname, "fixtures", "sample.docx");
+    // Make a regular file, then ask for output *inside* it -> dirname is a file.
+    const blocker = path.join(tempDir, "iam-a-file");
+    fs.writeFileSync(blocker, "x");
+    const out = path.join(blocker, "out.pdf");
+    const r = runCli([fixture, out]);
+    assert.equal(r.status, EXIT.USAGE, `expected EXIT.USAGE, got ${r.status}: ${r.stderr}`);
+    assert.match(r.stderr, /Output directory is not a directory|Cannot create output directory/);
+    assert.doesNotMatch(r.stderr, /\bat .*\(.*:\d+:\d+\)/, `stderr leaked a stack trace: ${r.stderr}`);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("error: --out-dir pointing at a regular file is a clean error, no stack trace", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-outdir-"));
+  try {
+    const fixture = path.join(__dirname, "fixtures", "sample.docx");
+    const blocker = path.join(tempDir, "not-a-dir");
+    fs.writeFileSync(blocker, "x");
+    const r = runCli(["--out-dir", blocker, fixture]);
+    assert.notEqual(r.status, 0, `expected non-zero exit, got 0: ${r.stdout}`);
+    assert.match(r.stderr, /not a directory|Cannot create output directory/);
+    assert.doesNotMatch(r.stderr, /\bat .*\(.*:\d+:\d+\)/, `stderr leaked a stack trace: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /EEXIST: mkdir/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// Regression: a read-only output directory yields a clean error (not a raw EACCES
+// stack). Skipped when running as root, where the mode is ignored.
+test("error: read-only output directory is a clean error, no stack trace", (t) => {
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    t.skip("running as root; directory mode is not enforced");
+    return;
+  }
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-ro-"));
+  try {
+    const fixture = path.join(__dirname, "fixtures", "sample.docx");
+    const roDir = path.join(tempDir, "ro");
+    fs.mkdirSync(roDir);
+    fs.chmodSync(roDir, 0o500); // read+execute, no write
+    const out = path.join(roDir, "out.pdf");
+    const r = runCli([fixture, out]);
+    if (r.status === 0 || r.status === EXIT.MISSING_DEP) {
+      t.skip("no backend installed, or filesystem did not enforce read-only mode");
+      return;
+    }
+    // The dir already exists, so mkdir succeeds and the write fails later in the
+    // backend -> a clean CONVERT_FAIL. Either way: a documented non-zero code and
+    // a "Cannot write/create" message, never a raw EACCES stack trace.
+    assert.ok(
+      r.status === EXIT.USAGE || r.status === EXIT.CONVERT_FAIL,
+      `expected a clean USAGE/CONVERT_FAIL code, got ${r.status}: ${r.stderr}`
+    );
+    assert.match(r.stderr, /Cannot (write|create) output|not a directory/);
+    assert.doesNotMatch(r.stderr, /\bat .*\(.*:\d+:\d+\)/, `stderr leaked a stack trace: ${r.stderr}`);
+  } finally {
+    try { fs.chmodSync(path.join(tempDir, "ro"), 0o700); } catch {}
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

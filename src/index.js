@@ -344,7 +344,15 @@ function validatePaths(input, output, overwrite) {
   if (!fs.statSync(input).isFile()) throw new CliError(`Input path is not a file: ${input}`, EXIT.USAGE);
   if (path.extname(input).toLowerCase() !== ".docx") throw new CliError(`Input must be a .docx file: ${input}`, EXIT.USAGE);
   if (fs.existsSync(output) && !overwrite) throw new CliError(`Output file already exists: ${output}. Use --overwrite to replace it.`, EXIT.USAGE);
-  fs.mkdirSync(path.dirname(output), { recursive: true });
+  const outDir = path.dirname(output);
+  if (fs.existsSync(outDir) && !fs.statSync(outDir).isDirectory()) {
+    throw new CliError(`Output directory is not a directory: ${outDir}`, EXIT.USAGE);
+  }
+  try {
+    fs.mkdirSync(outDir, { recursive: true });
+  } catch (err) {
+    throw new CliError(`Cannot create output directory ${outDir}: ${err.code || err.message}`, EXIT.USAGE);
+  }
 }
 
 function toAppleScriptString(value) { return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`; }
@@ -368,13 +376,17 @@ function convertWithLibreOffice(input, output, runner, timeoutMs) {
     const generated = path.join(outDir, `${path.basename(input, path.extname(input))}.pdf`);
     if (!fs.existsSync(generated)) throw new CliError(`LibreOffice did not generate: ${generated}`, EXIT.CONVERT_FAIL);
     try {
-      fs.renameSync(generated, output);
-    } catch (err) {
-      if (err && err.code === "EXDEV") {
-        fs.copyFileSync(generated, output);
-      } else {
-        throw err;
+      try {
+        fs.renameSync(generated, output);
+      } catch (err) {
+        if (err && err.code === "EXDEV") {
+          fs.copyFileSync(generated, output);
+        } else {
+          throw err;
+        }
       }
+    } catch (err) {
+      throw new CliError(`Cannot write output ${output}: ${err.code || err.message}`, EXIT.CONVERT_FAIL);
     }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -518,10 +530,18 @@ function convertWithTextutilCups(input, output, runner = runCommand, timeoutMs =
   try {
     const t = runner("textutil", ["-convert", "txt", "-stdout", input], { timeoutMs });
     if (t.status !== 0) throw new CliError(`textutil failed: ${String(t.stderr || "").trim()}`, EXIT.CONVERT_FAIL);
-    fs.writeFileSync(tempText, t.stdout, "utf8");
+    try {
+      fs.writeFileSync(tempText, t.stdout, "utf8");
+    } catch (err) {
+      throw new CliError(`Cannot write intermediate file ${tempText}: ${err.code || err.message}`, EXIT.CONVERT_FAIL);
+    }
     const p = runner("cupsfilter", ["-m", "application/pdf", tempText], { encoding: "buffer", timeoutMs });
     if (p.status !== 0) throw new CliError(`cupsfilter failed: ${String(Buffer.isBuffer(p.stderr)?p.stderr.toString("utf8"):p.stderr||"").trim()}`, EXIT.CONVERT_FAIL);
-    fs.writeFileSync(output, p.stdout);
+    try {
+      fs.writeFileSync(output, p.stdout);
+    } catch (err) {
+      throw new CliError(`Cannot write output ${output}: ${err.code || err.message}`, EXIT.CONVERT_FAIL);
+    }
   } finally { fs.rmSync(tempDir, { recursive: true, force: true }); }
 }
 

@@ -455,7 +455,13 @@ function runPipe(options, inputIsStdin, outputIsStdout) {
       overwrite: outputIsStdout ? true : options.overwrite
     });
     if (outputIsStdout) {
-      process.stdout.write(fs.readFileSync(result.output));
+      // Write synchronously to fd 1 so the full PDF drains before the process
+      // exits — process.stdout.write() can truncate a large buffer on a slow pipe.
+      const pdfBuf = fs.readFileSync(result.output);
+      let offset = 0;
+      while (offset < pdfBuf.length) {
+        offset += fs.writeSync(1, pdfBuf, offset, pdfBuf.length - offset);
+      }
       if (!options.quiet) {
         process.stderr.write(`Converted ${inputIsStdin ? "(stdin)" : path.basename(result.input)} -> stdout using ${result.backend}\n`);
       }
