@@ -1,4 +1,15 @@
 name: Release
+# npm publish uses OIDC Trusted Publishing — NO long-lived NPM_TOKEN.
+#
+# One-time setup on npmjs.com (required before the first OIDC publish):
+#   package `docx2pdf-cli` → Settings → Trusted Publisher → GitHub Actions
+#   organization/user = DrBaher · repository = docx2pdf-cli
+#   workflow filename = release.yml · environment = (leave blank)
+#
+# IMPORTANT: do NOT add `registry-url:` to actions/setup-node. With it, setup-node
+# writes a placeholder NODE_AUTH_TOKEN into .npmrc and npm sends *that* instead of
+# fetching an OIDC token (the masked ENEEDAUTH/404 that blocked the token publishes).
+# Without it, npm >= 11.5.1 performs Trusted Publishing via the id-token below.
 
 on:
   push:
@@ -16,7 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org
+      - name: ensure npm >= 11.5.1 (OIDC support)
+        run: npm install -g npm@latest && npm --version
 
       - name: Install LibreOffice (for smoke test)
         run: |
@@ -37,8 +49,7 @@ jobs:
 
       - name: Publish to npm with provenance
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # No NODE_AUTH_TOKEN — npm mints a short-lived OIDC token via id-token:write.
 
       - name: Create GitHub release
         env:
