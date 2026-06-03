@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-03
+
+Robustness fixes from a follow-up source audit.
+
+### Fixed
+- **PDF-to-stdout no longer crashes on a closed pipe.** The synchronous fd-1 drain loop
+  in `runPipe` is wrapped: a consumer closing the pipe (`EPIPE`) is a clean early exit
+  (return 0); other write errors become `CliError(EXIT.CONVERT_FAIL)` instead of a raw
+  stack trace.
+- **`NO_BACKEND` error kind restored.** A requested-but-unavailable backend (and the
+  `GOTENBERG_URL`/`CONVERTAPI_SECRET` missing-config exit-3 paths) are tagged
+  `kind:"NO_BACKEND"` so `printSetupHelp` fires, matching the catalog/capabilities contract.
+- **`demo` subcommand parsed regardless of position**, so a leading flag (e.g.
+  `--json demo`) no longer misparses `demo` as an input filename.
+
 ## [0.2.3] - 2026-05-31
 
 ### Fixed
