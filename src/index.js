@@ -251,7 +251,7 @@ function selectBackend(preferred, available, options = {}) {
     );
   }
   if (!BACKENDS.includes(preferred)) throw new CliError(`Unsupported backend '${preferred}'.`, EXIT.USAGE);
-  if (!available.includes(preferred)) throw new CliError(`Requested backend '${preferred}' is not available.`, EXIT.MISSING_DEP);
+  if (!available.includes(preferred)) throw new CliError(`Requested backend '${preferred}' is not available.`, EXIT.MISSING_DEP, "NO_BACKEND");
   return preferred;
 }
 
@@ -444,7 +444,7 @@ end tell`;
 
 function convertWithGotenberg(input, output, runner = runCommand, timeoutMs = 120000, retries = 0) {
   const base = process.env.GOTENBERG_URL;
-  if (!base) throw new CliError("GOTENBERG_URL is required for gotenberg backend.", EXIT.MISSING_DEP);
+  if (!base) throw new CliError("GOTENBERG_URL is required for gotenberg backend.", EXIT.MISSING_DEP, "NO_BACKEND");
 
   const endpoint = `${String(base).replace(/\/+$/, "")}/forms/libreoffice/convert`;
   let lastErr = null;
@@ -475,7 +475,7 @@ function waitMs(ms) {
 
 function convertWithConvertApi(input, output, runner = runCommand, timeoutMs = 120000, retries = 0) {
   const secret = process.env.CONVERTAPI_SECRET;
-  if (!secret) throw new CliError("CONVERTAPI_SECRET is required for convertapi backend.", EXIT.MISSING_DEP);
+  if (!secret) throw new CliError("CONVERTAPI_SECRET is required for convertapi backend.", EXIT.MISSING_DEP, "NO_BACKEND");
 
   let lastErr = null;
   for (let attempt = 1; attempt <= retries + 1; attempt += 1) {

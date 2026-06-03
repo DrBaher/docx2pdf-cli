@@ -1014,3 +1014,14 @@ test("selectBackend tags 'NO_BACKEND' kind in strict mode with only text-only", 
     assert.equal(err.kind, "NO_BACKEND");
   }
 });
+
+test("selectBackend tags 'NO_BACKEND' kind when a requested backend is unavailable", () => {
+  try {
+    selectBackend("gotenberg", ["textutil-cups"]);
+    assert.fail("expected throw");
+  } catch (err) {
+    assert.ok(err instanceof CliError);
+    assert.equal(err.exitCode, EXIT.MISSING_DEP);
+    assert.equal(err.kind, "NO_BACKEND");
+  }
+});

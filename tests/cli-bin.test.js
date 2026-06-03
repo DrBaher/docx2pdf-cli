@@ -461,6 +461,60 @@ test("demo: zero-config command runs the bundled sample", () => {
   assert.match(r.stdout, /Converted the sample DOCX to PDF/);
 });
 
+// Regression: `demo` is a subcommand, not an input filename. A leading flag used
+// to push `demo` into the positional slot, failing with "Input file not found:
+// .../demo". It must be detected as the sole positional regardless of position.
+test("demo: detected even when a flag precedes the subcommand", () => {
+  for (const args of [["--json", "demo"], ["--why", "demo"], ["--quiet", "demo"]]) {
+    const r = runCli(args);
+    assert.doesNotMatch(r.stderr, /Input file not found/, `'${args.join(" ")}' misparsed demo as a filename: ${r.stderr}`);
+    if (r.status === EXIT.MISSING_DEP) {
+      assert.match(r.stderr, /No PDF backend is installed/);
+      continue;
+    }
+    assert.equal(r.status, 0, `'${args.join(" ")}' demo failed: ${r.stderr}`);
+  }
+});
+
+// Guard: `demo` as a flag *value* (here, a backend name) must NOT trigger the
+// demo subcommand — it's the value of --backend, not a positional.
+test("demo: a flag value of 'demo' does not trigger the subcommand", () => {
+  const r = runCli(["--backend", "demo", "nonexistent.docx"], { envReplace: envWithoutBackends() });
+  assert.doesNotMatch(r.stderr, /docx2pdf demo —/, `--backend demo wrongly ran the demo: ${r.stderr}`);
+});
+
+// Regression: requesting a specific-but-unavailable backend exits 3 and, per the
+// catalog/capabilities contract (exit 3 carries error.kind NO_BACKEND), prints
+// the setup help. The CliError used to omit the kind, so printSetupHelp (gated
+// on kind === "NO_BACKEND") was silently skipped.
+test("error: requested-but-unavailable backend exits 3 and prints setup help", () => {
+  const fixture = path.join(__dirname, "fixtures", "sample.docx");
+  const r = runCli(
+    ["--backend", "gotenberg", fixture, "/tmp/docx2pdf-nobackend.pdf"],
+    { envReplace: envWithoutBackends() }
+  );
+  assert.equal(r.status, EXIT.MISSING_DEP, `expected exit 3, got ${r.status}: ${r.stderr}`);
+  assert.match(r.stderr, /not available/);
+  assert.match(r.stderr, /All install options:/, `setup help was skipped: ${r.stderr}`);
+});
+
+// Regression: the synchronous fd-1 drain loop in stdout pipe mode must treat a
+// consumer that closes the pipe early (EPIPE) as a clean exit, never crash with
+// a raw EPIPE/EAGAIN stack trace + exit 1.
+test("pipe: stdout consumer closing early does not emit a raw stack trace", () => {
+  const fixture = path.join(__dirname, "fixtures", "sample.docx");
+  // Pipe into a consumer that reads a single byte then exits, closing the read
+  // end while the CLI may still be writing.
+  const r = spawnSync(
+    "/bin/sh",
+    ["-c", `'${process.execPath}' '${CLI}' '${fixture}' - | head -c 1 >/dev/null`],
+    { encoding: "utf8" }
+  );
+  // No backend on this host → MISSING_DEP is fine; we only assert no crash trace.
+  assert.doesNotMatch(r.stderr || "", /at Object\.|at Module\.|EPIPE\n\s+at /, `raw stack trace leaked: ${r.stderr}`);
+  assert.notEqual(r.status, null, `CLI was killed by a signal: ${r.signal}`);
+});
+
 test("pipe: reads DOCX from stdin ('-') and writes to a file", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx2pdf-stdin-"));
   try {

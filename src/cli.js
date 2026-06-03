@@ -215,8 +215,28 @@ function getCapabilities() {
   };
 }
 
+// `demo` is a subcommand, not an input file. It used to be detected only at
+// argv[0], so a leading flag (e.g. `docx2pdf --json demo`) made `demo` parse
+// as a positional input filename and fail with "Input file not found: .../demo".
+// Detect it as the sole positional instead, independent of position. Parsing
+// reuses parseArgs so flag *values* (e.g. `--backend demo`) are never mistaken
+// for the subcommand. Informational/mode flags still take precedence.
+function isDemoInvocation(argv) {
+  if (!argv.includes("demo")) return false;
+  let parsed;
+  try {
+    parsed = parseArgs(argv);
+  } catch {
+    return false;
+  }
+  if (parsed.help || parsed.version || parsed.listBackends || parsed.doctor || parsed.capabilities || parsed.catalog || parsed.checkFonts) {
+    return false;
+  }
+  return parsed.input === "demo" && !parsed.output && !parsed.outDir && (parsed.inputs || []).length === 1;
+}
+
 function main(argv) {
-  if (argv[0] === "demo") return runDemo();
+  if (isDemoInvocation(argv)) return runDemo();
 
   const options = parseArgs(argv);
 
@@ -459,8 +479,16 @@ function runPipe(options, inputIsStdin, outputIsStdout) {
       // exits — process.stdout.write() can truncate a large buffer on a slow pipe.
       const pdfBuf = fs.readFileSync(result.output);
       let offset = 0;
-      while (offset < pdfBuf.length) {
-        offset += fs.writeSync(1, pdfBuf, offset, pdfBuf.length - offset);
+      try {
+        while (offset < pdfBuf.length) {
+          offset += fs.writeSync(1, pdfBuf, offset, pdfBuf.length - offset);
+        }
+      } catch (err) {
+        // A consumer that closes the pipe early (e.g. `docx2pdf - | head -c1`)
+        // surfaces as EPIPE — that's a clean, intentional early exit, not a
+        // failure. Any other write error is a real I/O problem.
+        if (err && err.code === "EPIPE") return 0;
+        throw new CliError(`Failed to stream PDF to stdout: ${err.code || err.message}`, EXIT.CONVERT_FAIL);
       }
       if (!options.quiet) {
         process.stderr.write(`Converted ${inputIsStdin ? "(stdin)" : path.basename(result.input)} -> stdout using ${result.backend}\n`);
